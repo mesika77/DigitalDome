@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, DateTime, Text
+from sqlalchemy import Column, Integer, String, Date, DateTime, Text, JSON
 from datetime import datetime, date
 from database import Base
 
@@ -14,4 +14,5 @@ class FlaggedMeme(Base):
     community = Column(String, nullable=False)
     date_detected = Column(Date, default=date.today)
     context_notes = Column(Text, nullable=True)
+    context = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

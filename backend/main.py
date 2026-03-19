@@ -13,7 +13,7 @@ from database import engine, get_db, Base
 from models import FlaggedMeme
 from schemas import FlaggedMemeResponse, CheckResult, AIAnalysisResult
 from image_utils import compute_phash, hamming_distance, similarity_score
-from ai_analysis import analyze_with_claude, generate_context_notes
+from ai_analysis import analyze_with_claude, generate_context_notes, generate_meme_context
 
 load_dotenv()
 
@@ -29,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Dev-only: drop and recreate DB when schema changes (no Alembic migrations in dev)
 Base.metadata.create_all(bind=engine)
 
 Path(UPLOAD_DIR, "source").mkdir(parents=True, exist_ok=True)
@@ -56,6 +57,7 @@ def _meme_to_response(meme: FlaggedMeme) -> FlaggedMemeResponse:
         community=meme.community,
         date_detected=meme.date_detected,
         context_notes=meme.context_notes,
+        context=meme.context,
         created_at=meme.created_at,
         thumbnail_url=f"/uploads/source/{meme.filename}",
     )
@@ -79,6 +81,8 @@ async def inject_meme(
     if not context_notes:
         context_notes = await generate_context_notes(filepath)
 
+    context = await generate_meme_context(filepath)
+
     detected = date.today()
     if date_detected:
         try:
@@ -94,6 +98,7 @@ async def inject_meme(
         community=community or "Unclassified",
         date_detected=detected,
         context_notes=context_notes,
+        context=context,
         created_at=datetime.utcnow(),
     )
     db.add(meme)
@@ -107,6 +112,21 @@ async def inject_meme(
 def get_database(db: Session = Depends(get_db)):
     memes = db.query(FlaggedMeme).order_by(FlaggedMeme.created_at.desc()).all()
     return [_meme_to_response(m) for m in memes]
+
+
+@app.delete("/api/database/{meme_id}")
+def delete_meme(meme_id: int, db: Session = Depends(get_db)):
+    meme = db.query(FlaggedMeme).filter(FlaggedMeme.id == meme_id).first()
+    if not meme:
+        raise HTTPException(status_code=404, detail="Meme not found")
+
+    file_path = Path(meme.filepath)
+    if file_path.exists():
+        file_path.unlink()
+
+    db.delete(meme)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/api/check", response_model=CheckResult)

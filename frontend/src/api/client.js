@@ -17,6 +17,11 @@ export async function getDatabase() {
   return data;
 }
 
+export async function deleteMeme(id) {
+  const { data } = await api.delete(`/api/database/${id}`);
+  return data;
+}
+
 export async function checkImage(file) {
   const formData = new FormData();
   formData.append("file", file);

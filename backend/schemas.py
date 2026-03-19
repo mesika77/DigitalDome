@@ -11,6 +11,7 @@ class MemeCreate(BaseModel):
     community: str
     date_detected: date
     context_notes: Optional[str] = None
+    context: Optional[dict] = None
 
 
 class FlaggedMemeResponse(BaseModel):
@@ -22,6 +23,7 @@ class FlaggedMemeResponse(BaseModel):
     community: str
     date_detected: date
     context_notes: Optional[str] = None
+    context: Optional[dict] = None
     created_at: datetime
     thumbnail_url: Optional[str] = None
 
