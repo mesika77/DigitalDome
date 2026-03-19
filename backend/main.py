@@ -246,13 +246,42 @@ def delete_meme(meme_id: int, db: Session = Depends(get_db)):
     if not meme:
         raise HTTPException(status_code=404, detail="Meme not found")
 
+    batch_id = meme.upload_batch_id
+
     file_path = Path(meme.filepath)
     if file_path.exists():
         file_path.unlink()
 
     db.delete(meme)
     db.commit()
+
+    if batch_id:
+        remaining = db.query(FlaggedMeme).filter(FlaggedMeme.upload_batch_id == batch_id).count()
+        if remaining == 0:
+            batch = db.query(UploadBatch).filter(UploadBatch.id == batch_id).first()
+            if batch:
+                db.delete(batch)
+                db.commit()
+
     return {"ok": True}
+
+
+@app.delete("/api/batches/{batch_id}")
+def delete_batch(batch_id: str, db: Session = Depends(get_db)):
+    batch = db.query(UploadBatch).filter(UploadBatch.batch_id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    memes = db.query(FlaggedMeme).filter(FlaggedMeme.upload_batch_id == batch.id).all()
+    for meme in memes:
+        file_path = Path(meme.filepath)
+        if file_path.exists():
+            file_path.unlink()
+        db.delete(meme)
+
+    db.delete(batch)
+    db.commit()
+    return {"ok": True, "deleted": len(memes)}
 
 
 # ---------------------------------------------------------------------------

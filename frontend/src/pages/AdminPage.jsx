@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import DropZone from "../components/DropZone";
 import DatabaseGrid from "../components/DatabaseGrid";
-import { injectBatch, getBatches, deleteMeme } from "../api/client";
+import { injectBatch, getBatches, deleteMeme, deleteBatch } from "../api/client";
 
 const PLATFORMS = ["Reddit", "4chan", "Telegram", "Twitter/X", "Discord", "Gab", "Other"];
 
@@ -94,6 +94,11 @@ export default function AdminPage() {
 
   const handleDelete = async (id) => {
     await deleteMeme(id);
+    fetchBatches();
+  };
+
+  const handleDeleteBatch = async (batchId) => {
+    await deleteBatch(batchId);
     fetchBatches();
   };
 
@@ -288,7 +293,7 @@ export default function AdminPage() {
 
           {/* Right: Database grid */}
           <div className="lg:col-span-3">
-            <DatabaseGrid batches={batches} onDelete={handleDelete} />
+            <DatabaseGrid batches={batches} onDelete={handleDelete} onDeleteBatch={handleDeleteBatch} />
           </div>
         </div>
       </main>

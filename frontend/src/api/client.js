@@ -42,6 +42,11 @@ export async function deleteMeme(id) {
   return data;
 }
 
+export async function deleteBatch(batchId) {
+  const { data } = await api.delete(`/api/batches/${batchId}`);
+  return data;
+}
+
 export async function checkImage(file) {
   const formData = new FormData();
   formData.append("file", file);

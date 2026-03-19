@@ -112,47 +112,103 @@ function MemeCard({ meme, onDelete, compact = false }) {
   );
 }
 
-function BatchCard({ batch, onDelete }) {
+function BatchCard({ batch, onDelete, onDeleteBatch }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [confirmingBatch, setConfirmingBatch] = useState(false);
+  const [deletingBatch, setDeletingBatch] = useState(false);
   const ts = new Date(batch.created_at);
   const timeStr = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
   const platforms = [...new Set(batch.memes.map((m) => m.platform).filter(Boolean))];
   const posters = [...new Set(batch.memes.map((m) => m.original_poster).filter((p) => p && p !== "Unknown"))];
 
+  const handleDeleteBatch = async (e) => {
+    e.stopPropagation();
+    if (!confirmingBatch) {
+      setConfirmingBatch(true);
+      return;
+    }
+    setDeletingBatch(true);
+    try {
+      await onDeleteBatch?.(batch.batch_id);
+    } finally {
+      setDeletingBatch(false);
+      setConfirmingBatch(false);
+    }
+  };
+
+  const cancelConfirm = (e) => {
+    e.stopPropagation();
+    setConfirmingBatch(false);
+  };
+
   return (
-    <div className="rounded-2xl border border-white/5 bg-white/1.5 overflow-hidden">
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/3 transition-colors text-left"
-      >
-        <div className="shrink-0 w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center ring-1 ring-red-500/15">
-          <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    <div className="group/batch rounded-2xl border border-white/5 bg-white/1.5 overflow-hidden">
+      <div className="flex items-center">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex-1 min-w-0 px-4 py-3 flex items-center gap-3 hover:bg-white/3 transition-colors text-left"
+        >
+          <div className="shrink-0 w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center ring-1 ring-red-500/15">
+            <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {platforms.map((p) => (
+                <PlatformBadge key={p} platform={p} />
+              ))}
+              {posters.length > 0 && (
+                <span className="text-xs text-white/40 truncate">
+                  {posters.length <= 2 ? posters.join(", ") : `${posters.length} accounts`}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[10px] text-white/20">{timeStr}</span>
+              <span className="text-[10px] text-white/20">&middot;</span>
+              <span className="text-[10px] text-white/30 font-medium">{batch.memes.length} image{batch.memes.length !== 1 ? "s" : ""}</span>
+            </div>
+          </div>
+          <svg className={`w-4 h-4 text-white/20 shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {platforms.map((p) => (
-              <PlatformBadge key={p} platform={p} />
-            ))}
-            {posters.length > 0 && (
-              <span className="text-xs text-white/40 truncate">
-                {posters.length <= 2 ? posters.join(", ") : `${posters.length} accounts`}
-              </span>
+        </button>
+
+        {onDeleteBatch && (
+          <div className={`flex items-center gap-1 pr-3 transition-opacity ${confirmingBatch ? "opacity-100" : "opacity-0 group-hover/batch:opacity-100"}`}>
+            {confirmingBatch && (
+              <button
+                onClick={cancelConfirm}
+                className="rounded-md bg-black/60 backdrop-blur-sm p-1.5 text-white/50 hover:text-white/80 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             )}
+            <button
+              onClick={handleDeleteBatch}
+              disabled={deletingBatch}
+              className={`rounded-md backdrop-blur-sm p-1.5 transition-colors ${
+                confirmingBatch
+                  ? "bg-red-600/80 text-white hover:bg-red-500"
+                  : "bg-black/40 text-white/40 hover:text-red-400"
+              } disabled:opacity-50`}
+            >
+              {deletingBatch ? (
+                <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+            </button>
           </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] text-white/20">{timeStr}</span>
-            <span className="text-[10px] text-white/20">&middot;</span>
-            <span className="text-[10px] text-white/30 font-medium">{batch.image_count} image{batch.image_count !== 1 ? "s" : ""}</span>
-          </div>
-        </div>
-        <svg className={`w-4 h-4 text-white/20 shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+        )}
+      </div>
 
       {!collapsed && (
         <div className="px-4 pb-3">
@@ -170,7 +226,7 @@ function BatchCard({ batch, onDelete }) {
   );
 }
 
-export default function DatabaseGrid({ batches, memes, onDelete }) {
+export default function DatabaseGrid({ batches, memes, onDelete, onDeleteBatch }) {
   const hasBatches = batches && batches.length > 0;
   const hasLegacyMemes = memes && memes.length > 0;
 
@@ -206,7 +262,7 @@ export default function DatabaseGrid({ batches, memes, onDelete }) {
 
       <div className="space-y-3 max-h-[calc(100vh-160px)] overflow-y-auto pr-1">
         {hasBatches && batches.map((batch) => (
-          <BatchCard key={batch.id} batch={batch} onDelete={onDelete} />
+          <BatchCard key={batch.id} batch={batch} onDelete={onDelete} onDeleteBatch={onDeleteBatch} />
         ))}
         {hasLegacyMemes && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
