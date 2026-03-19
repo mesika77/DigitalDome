@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+__pycache__/
+*.pyc
+*.db
+backend/uploads/source/*
+backend/uploads/gateway/*
+!backend/uploads/source/.gitkeep
+!backend/uploads/gateway/.gitkeep
+.vite/

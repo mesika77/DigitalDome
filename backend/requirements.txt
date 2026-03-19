@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+pillow
+imagehash
+anthropic
+python-multipart
+python-dotenv
+aiofiles
