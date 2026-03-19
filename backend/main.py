@@ -1,7 +1,9 @@
 import os
+import json
 import uuid
 from datetime import date, datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,8 +12,14 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from database import engine, get_db, Base
-from models import FlaggedMeme
-from schemas import FlaggedMemeResponse, CheckResult, AIAnalysisResult
+from models import FlaggedMeme, UploadBatch
+from schemas import (
+    FlaggedMemeResponse,
+    CheckResult,
+    AIAnalysisResult,
+    UploadBatchResponse,
+    BatchInjectResponse,
+)
 from image_utils import compute_phash, hamming_distance, similarity_score
 from ai_analysis import analyze_with_claude, generate_context_notes, generate_meme_context
 
@@ -21,9 +29,11 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 
 app = FastAPI(title="DigitalDome", description="Pre-upload hate content gateway")
 
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[o.strip() for o in CORS_ORIGINS.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,9 +60,13 @@ def _save_upload(file: UploadFile, subfolder: str) -> tuple[str, str]:
 def _meme_to_response(meme: FlaggedMeme) -> FlaggedMemeResponse:
     return FlaggedMemeResponse(
         id=meme.id,
+        upload_batch_id=meme.upload_batch_id,
         filename=meme.filename,
         filepath=meme.filepath,
         phash=meme.phash,
+        platform=meme.platform,
+        original_poster=meme.original_poster,
+        source_url=meme.source_url,
         source=meme.source,
         community=meme.community,
         date_detected=meme.date_detected,
@@ -61,6 +75,22 @@ def _meme_to_response(meme: FlaggedMeme) -> FlaggedMemeResponse:
         created_at=meme.created_at,
         thumbnail_url=f"/uploads/source/{meme.filename}",
     )
+
+
+def _batch_to_response(batch: UploadBatch) -> UploadBatchResponse:
+    return UploadBatchResponse(
+        id=batch.id,
+        batch_id=batch.batch_id,
+        analyst_notes=batch.analyst_notes,
+        image_count=batch.image_count,
+        created_at=batch.created_at,
+        memes=[_meme_to_response(m) for m in batch.memes],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Inject endpoints
+# ---------------------------------------------------------------------------
 
 
 @app.post("/api/inject", response_model=FlaggedMemeResponse)
@@ -108,10 +138,106 @@ async def inject_meme(
     return _meme_to_response(meme)
 
 
+@app.post("/api/inject/batch", response_model=BatchInjectResponse)
+async def inject_batch(
+    files: list[UploadFile] = File(...),
+    image_metadata: Optional[str] = Form(None),
+    analyst_notes: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Batch inject with per-image metadata.
+
+    image_metadata is a JSON array matching files by index:
+    [{"platform": "Reddit", "original_poster": "u/foo", "source_url": "..."}, ...]
+    If omitted or shorter than files, missing entries get defaults.
+    """
+    image_files = [f for f in files if f.content_type and f.content_type.startswith("image/")]
+    if not image_files:
+        raise HTTPException(status_code=400, detail="No valid image files provided")
+
+    meta_list = []
+    if image_metadata:
+        try:
+            meta_list = json.loads(image_metadata)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="image_metadata must be valid JSON")
+
+    batch = UploadBatch(
+        batch_id=uuid.uuid4().hex,
+        analyst_notes=analyst_notes or None,
+        image_count=len(image_files),
+        created_at=datetime.utcnow(),
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+
+    processed = 0
+    failed = 0
+
+    for i, file in enumerate(image_files):
+        try:
+            meta = meta_list[i] if i < len(meta_list) else {}
+            img_platform = meta.get("platform", "Unknown")
+            img_poster = meta.get("original_poster", "Unknown")
+            img_source_url = meta.get("source_url") or None
+
+            filename, filepath = _save_upload(file, "source")
+            phash = compute_phash(filepath)
+            context = await generate_meme_context(filepath)
+
+            meme = FlaggedMeme(
+                upload_batch_id=batch.id,
+                filename=filename,
+                filepath=filepath,
+                phash=phash,
+                platform=img_platform,
+                original_poster=img_poster,
+                source_url=img_source_url,
+                source=img_platform,
+                community=img_poster,
+                date_detected=date.today(),
+                context=context,
+                created_at=datetime.utcnow(),
+            )
+            db.add(meme)
+            db.commit()
+            processed += 1
+        except Exception:
+            failed += 1
+
+    db.refresh(batch)
+
+    return BatchInjectResponse(
+        batch=_batch_to_response(batch),
+        processed=processed,
+        failed=failed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Database & Batch read endpoints
+# ---------------------------------------------------------------------------
+
+
 @app.get("/api/database", response_model=list[FlaggedMemeResponse])
 def get_database(db: Session = Depends(get_db)):
     memes = db.query(FlaggedMeme).order_by(FlaggedMeme.created_at.desc()).all()
     return [_meme_to_response(m) for m in memes]
+
+
+@app.get("/api/batches", response_model=list[UploadBatchResponse])
+def get_batches(db: Session = Depends(get_db)):
+    batches = db.query(UploadBatch).order_by(UploadBatch.created_at.desc()).all()
+    return [_batch_to_response(b) for b in batches]
+
+
+@app.get("/api/batches/{batch_id}", response_model=UploadBatchResponse)
+def get_batch(batch_id: str, db: Session = Depends(get_db)):
+    batch = db.query(UploadBatch).filter(UploadBatch.batch_id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return _batch_to_response(batch)
 
 
 @app.delete("/api/database/{meme_id}")
@@ -127,6 +253,11 @@ def delete_meme(meme_id: int, db: Session = Depends(get_db)):
     db.delete(meme)
     db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Check endpoint
+# ---------------------------------------------------------------------------
 
 
 @app.post("/api/check", response_model=CheckResult)

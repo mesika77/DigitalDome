@@ -16,9 +16,13 @@ class MemeCreate(BaseModel):
 
 class FlaggedMemeResponse(BaseModel):
     id: int
+    upload_batch_id: Optional[int] = None
     filename: str
     filepath: str
     phash: str
+    platform: Optional[str] = None
+    original_poster: Optional[str] = None
+    source_url: Optional[str] = None
     source: str
     community: str
     date_detected: date
@@ -28,6 +32,23 @@ class FlaggedMemeResponse(BaseModel):
     thumbnail_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class UploadBatchResponse(BaseModel):
+    id: int
+    batch_id: str
+    analyst_notes: Optional[str] = None
+    image_count: int
+    created_at: datetime
+    memes: list[FlaggedMemeResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class BatchInjectResponse(BaseModel):
+    batch: UploadBatchResponse
+    processed: int
+    failed: int
 
 
 class AIAnalysisResult(BaseModel):

@@ -1,3 +1,5 @@
+import { imageUrl } from "../api/client";
+
 function SeverityBadge({ severity }) {
   const config = {
     high: "bg-red-500/15 text-red-400 ring-red-500/20",
@@ -97,7 +99,7 @@ function BlockedCard({ result }) {
             <div>
               <p className="text-[10px] text-white/30 mb-1.5 uppercase tracking-wider font-semibold">Your Upload</p>
               <img
-                src={result.uploaded_image_url}
+                src={imageUrl(result.uploaded_image_url)}
                 alt="Uploaded"
                 className="w-full aspect-square object-cover rounded-xl border border-white/10"
               />
@@ -106,7 +108,7 @@ function BlockedCard({ result }) {
           <div>
             <p className="text-[10px] text-white/30 mb-1.5 uppercase tracking-wider font-semibold">Database Match</p>
             <img
-              src={result.match.thumbnail_url}
+              src={imageUrl(result.match.thumbnail_url)}
               alt="Match"
               className="w-full aspect-square object-cover rounded-xl border-2 border-red-500/30"
             />

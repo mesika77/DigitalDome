@@ -8,10 +8,11 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function DropZone({ onFileSelect, variant = "dark", disabled = false }) {
+export default function DropZone({ onFileSelect, variant = "dark", disabled = false, multiple = false }) {
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null);
   const [fileInfo, setFileInfo] = useState(null);
+  const [multiFiles, setMultiFiles] = useState([]);
   const inputRef = useRef(null);
 
   const isInstagram = variant === "instagram";
@@ -26,27 +27,120 @@ export default function DropZone({ onFileSelect, variant = "dark", disabled = fa
     [onFileSelect]
   );
 
+  const handleMultiFiles = useCallback(
+    (fileList) => {
+      const images = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+      if (!images.length) return;
+      setMultiFiles(images);
+      onFileSelect?.(images);
+    },
+    [onFileSelect]
+  );
+
   const handleDrop = useCallback(
     (e) => {
       e.preventDefault();
       setDragOver(false);
-      handleFile(e.dataTransfer.files[0]);
+      if (multiple) {
+        handleMultiFiles(e.dataTransfer.files);
+      } else {
+        handleFile(e.dataTransfer.files[0]);
+      }
     },
-    [handleFile]
+    [handleFile, handleMultiFiles, multiple]
   );
 
   const handleDragOver = (e) => { e.preventDefault(); setDragOver(true); };
   const handleDragLeave = () => setDragOver(false);
   const handleClick = () => { if (!disabled) inputRef.current?.click(); };
-  const handleChange = (e) => handleFile(e.target.files[0]);
+
+  const handleChange = (e) => {
+    if (multiple) {
+      handleMultiFiles(e.target.files);
+    } else {
+      handleFile(e.target.files[0]);
+    }
+  };
 
   const clearFile = (e) => {
     e.stopPropagation();
     setPreview(null);
     setFileInfo(null);
-    onFileSelect?.(null);
+    setMultiFiles([]);
+    onFileSelect?.(multiple ? [] : null);
     if (inputRef.current) inputRef.current.value = "";
   };
+
+  const removeFile = (idx, e) => {
+    e.stopPropagation();
+    const updated = multiFiles.filter((_, i) => i !== idx);
+    setMultiFiles(updated);
+    onFileSelect?.(updated);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  if (multiple) {
+    return (
+      <div
+        onClick={handleClick}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        className={`
+          relative cursor-pointer rounded-xl border-2 border-dashed transition-all duration-200
+          ${disabled ? "opacity-50 cursor-not-allowed" : ""}
+          ${dragOver ? "border-red-500/80 bg-red-500/5 scale-[1.01]" : "border-white/10 hover:border-white/20"}
+          ${multiFiles.length > 0 ? "p-3" : "p-8"}
+        `}
+      >
+        <input ref={inputRef} type="file" accept={ACCEPT} onChange={handleChange} className="hidden" disabled={disabled} multiple />
+
+        {multiFiles.length > 0 ? (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm text-white/70 font-medium">
+                {multiFiles.length} image{multiFiles.length !== 1 ? "s" : ""} selected
+              </p>
+              <button onClick={clearFile} className="text-xs text-white/30 hover:text-red-400 transition-colors">
+                Clear all
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {multiFiles.map((f, i) => (
+                <div key={i} className="relative group aspect-square">
+                  <img
+                    src={URL.createObjectURL(f)}
+                    alt={f.name}
+                    className="h-full w-full rounded-lg object-cover border border-white/10"
+                  />
+                  <button
+                    onClick={(e) => removeFile(i, e)}
+                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-[10px]"
+                  >
+                    &times;
+                  </button>
+                  <p className="absolute bottom-0 left-0 right-0 bg-black/60 text-[8px] text-white/60 px-1 py-0.5 rounded-b-lg truncate">
+                    {formatSize(f.size)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center">
+            <svg className="mx-auto h-10 w-10 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <p className="mt-3 text-sm text-white/50">
+              <span className="text-red-400 font-medium">Click to upload</span> or drag and drop
+            </p>
+            <p className="mt-1 text-xs text-white/30">Multiple images &middot; JPG, PNG, GIF, WEBP</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (isInstagram) {
     return (

@@ -2,60 +2,91 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import DropZone from "../components/DropZone";
 import DatabaseGrid from "../components/DatabaseGrid";
-import { injectMeme, getDatabase, deleteMeme } from "../api/client";
+import { injectBatch, getBatches, deleteMeme } from "../api/client";
+
+const PLATFORMS = ["Reddit", "4chan", "Telegram", "Twitter/X", "Discord", "Gab", "Other"];
 
 export default function AdminPage() {
-  const [memes, setMemes] = useState([]);
-  const [file, setFile] = useState(null);
-  const [showDetails, setShowDetails] = useState(false);
-  const [source, setSource] = useState("");
-  const [community, setCommunity] = useState("");
-  const [dateDetected, setDateDetected] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [contextNotes, setContextNotes] = useState("");
+  const [batches, setBatches] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [fileMeta, setFileMeta] = useState([]);
+  const [analystNotes, setAnalystNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [lastResult, setLastResult] = useState(null);
   const [successCount, setSuccessCount] = useState(0);
 
-  const fetchMemes = useCallback(async () => {
+  // Bulk-fill values
+  const [bulkPlatform, setBulkPlatform] = useState("");
+  const [bulkPoster, setBulkPoster] = useState("");
+  const [bulkUrl, setBulkUrl] = useState("");
+
+  const fetchBatches = useCallback(async () => {
     try {
-      const data = await getDatabase();
-      setMemes(data);
+      const data = await getBatches();
+      setBatches(data);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => {
-    fetchMemes();
-    const interval = setInterval(fetchMemes, 5000);
+    fetchBatches();
+    const interval = setInterval(fetchBatches, 5000);
     return () => clearInterval(interval);
-  }, [fetchMemes]);
+  }, [fetchBatches]);
 
-  const canSubmit = file && !loading;
+  const handleFilesSelected = (selectedFiles) => {
+    setFiles(selectedFiles);
+    setFileMeta(
+      (selectedFiles || []).map(() => ({
+        platform: bulkPlatform || "",
+        original_poster: bulkPoster || "",
+        source_url: bulkUrl || "",
+      }))
+    );
+  };
+
+  const applyBulkFill = () => {
+    setFileMeta((prev) =>
+      prev.map((m) => ({
+        platform: bulkPlatform || m.platform,
+        original_poster: bulkPoster || m.original_poster,
+        source_url: bulkUrl || m.source_url,
+      }))
+    );
+  };
+
+  const updateMeta = (idx, field, value) => {
+    setFileMeta((prev) => prev.map((m, i) => (i === idx ? { ...m, [field]: value } : m)));
+  };
+
+  const totalMemes = batches.reduce((sum, b) => sum + (b.memes?.length || 0), 0);
+  const allHavePlatform = fileMeta.length > 0 && fileMeta.every((m) => m.platform);
+  const canSubmit = files.length > 0 && allHavePlatform && !loading;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setLoading(true);
     setError(null);
+    setLastResult(null);
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
-      if (source.trim()) formData.append("source", source.trim());
-      if (community.trim()) formData.append("community", community.trim());
-      formData.append("date_detected", dateDetected);
-      if (contextNotes.trim()) formData.append("context_notes", contextNotes.trim());
+      files.forEach((f) => formData.append("files", f));
+      formData.append("image_metadata", JSON.stringify(fileMeta));
+      if (analystNotes.trim()) formData.append("analyst_notes", analystNotes.trim());
 
-      await injectMeme(formData);
-      setFile(null);
-      setSource("");
-      setCommunity("");
-      setContextNotes("");
-      setDateDetected(new Date().toISOString().split("T")[0]);
-      setSuccessCount((p) => p + 1);
-      fetchMemes();
+      const result = await injectBatch(formData);
+      setLastResult(result);
+      setFiles([]);
+      setFileMeta([]);
+      setAnalystNotes("");
+      setBulkPlatform("");
+      setBulkPoster("");
+      setBulkUrl("");
+      setSuccessCount((p) => p + result.processed);
+      fetchBatches();
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to inject meme");
+      setError(err.response?.data?.detail || "Failed to process batch");
     } finally {
       setLoading(false);
     }
@@ -63,16 +94,16 @@ export default function AdminPage() {
 
   const handleDelete = async (id) => {
     await deleteMeme(id);
-    setMemes((prev) => prev.filter((m) => m.id !== id));
+    fetchBatches();
   };
 
   const inputClasses = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 focus:border-red-500/40 focus:outline-none transition-colors";
+  const smallInput = "w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white placeholder-white/20 focus:border-red-500/40 focus:outline-none transition-colors";
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
-      {/* Admin header */}
       <header className="border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-linear-to-br from-red-500 to-red-700 flex items-center justify-center">
               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -80,14 +111,16 @@ export default function AdminPage() {
               </svg>
             </div>
             <div>
-              <h1 className="text-sm font-bold text-white leading-tight tracking-tight">DigitalDome Admin</h1>
-              <p className="text-[10px] text-white/25">Source Database Management</p>
+              <h1 className="text-sm font-bold text-white leading-tight tracking-tight">DigitalDome Intel</h1>
+              <p className="text-[10px] text-white/25">Batch Ingestion Console</p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-3 text-xs text-white/25">
-              <span><span className="text-white/50 font-semibold">{memes.length}</span> entries</span>
+              <span><span className="text-white/50 font-semibold">{batches.length}</span> batches</span>
+              <span className="text-white/10">|</span>
+              <span><span className="text-white/50 font-semibold">{totalMemes}</span> images</span>
               {successCount > 0 && (
                 <>
                   <span className="text-white/10">|</span>
@@ -102,68 +135,134 @@ export default function AdminPage() {
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              Gateway View
+              Gateway
             </Link>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-          {/* Left: Inject form */}
+          {/* Left: Batch inject form */}
           <div className="lg:col-span-2">
             <div className="rounded-2xl border border-white/5 bg-white/1.5 p-5 sticky top-20">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-4 flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Inject Flagged Content
+                Batch Intelligence Upload
               </h2>
 
-              <DropZone onFileSelect={setFile} variant="dark" disabled={loading} />
+              <DropZone onFileSelect={handleFilesSelected} variant="dark" disabled={loading} multiple />
 
-              <button
-                type="button"
-                onClick={() => setShowDetails(!showDetails)}
-                className="mt-3 flex items-center gap-1.5 text-xs text-white/25 hover:text-white/40 transition-colors"
-              >
-                <svg
-                  className={`h-3 w-3 transition-transform ${showDetails ? "rotate-90" : ""}`}
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                {showDetails ? "Hide details" : "Add optional metadata"}
-              </button>
-
-              {showDetails && (
-                <div className="mt-3 space-y-3 animate-slide-down">
-                  <div>
-                    <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">Source</label>
-                    <input type="text" value={source} onChange={(e) => setSource(e.target.value)}
-                      placeholder="e.g. 4chan /pol/" className={inputClasses} disabled={loading} />
+              {/* Bulk fill controls */}
+              {files.length > 1 && (
+                <div className="mt-3 rounded-xl bg-blue-500/5 border border-blue-500/15 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] text-blue-400/70 uppercase tracking-wider font-semibold">Bulk Fill All Images</p>
+                    <button
+                      onClick={applyBulkFill}
+                      className="text-[10px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-2 py-0.5 rounded transition-colors font-medium"
+                    >
+                      Apply to all
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">Community</label>
-                    <input type="text" value={community} onChange={(e) => setCommunity(e.target.value)}
-                      placeholder="e.g. Siege Culture" className={inputClasses} disabled={loading} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">Date Detected</label>
-                    <input type="date" value={dateDetected} onChange={(e) => setDateDetected(e.target.value)}
-                      className={`${inputClasses} scheme-dark`} disabled={loading} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">Context Notes</label>
-                    <textarea value={contextNotes} onChange={(e) => setContextNotes(e.target.value)}
-                      placeholder="Auto-generated by AI if left blank" rows={2}
-                      className={`${inputClasses} resize-none`} disabled={loading} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={bulkPlatform}
+                      onChange={(e) => setBulkPlatform(e.target.value)}
+                      className={`${smallInput} appearance-none`}
+                    >
+                      <option value="" className="bg-[#1a1a1a]">Platform</option>
+                      {PLATFORMS.map((p) => <option key={p} value={p} className="bg-[#1a1a1a]">{p}</option>)}
+                    </select>
+                    <input
+                      type="text"
+                      value={bulkPoster}
+                      onChange={(e) => setBulkPoster(e.target.value)}
+                      placeholder="Poster"
+                      className={smallInput}
+                    />
+                    <input
+                      type="text"
+                      value={bulkUrl}
+                      onChange={(e) => setBulkUrl(e.target.value)}
+                      placeholder="URL"
+                      className={smallInput}
+                    />
                   </div>
                 </div>
               )}
 
+              {/* Per-image metadata table */}
+              {files.length > 0 && (
+                <div className="mt-3 space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {files.map((file, idx) => (
+                    <div key={idx} className="flex items-center gap-2 rounded-lg bg-white/2 border border-white/5 p-2">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        className="w-10 h-10 rounded object-cover border border-white/10 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0 grid grid-cols-3 gap-1.5">
+                        <select
+                          value={fileMeta[idx]?.platform || ""}
+                          onChange={(e) => updateMeta(idx, "platform", e.target.value)}
+                          className={`${smallInput} appearance-none`}
+                          disabled={loading}
+                        >
+                          <option value="" className="bg-[#1a1a1a]">Platform *</option>
+                          {PLATFORMS.map((p) => <option key={p} value={p} className="bg-[#1a1a1a]">{p}</option>)}
+                        </select>
+                        <input
+                          type="text"
+                          value={fileMeta[idx]?.original_poster || ""}
+                          onChange={(e) => updateMeta(idx, "original_poster", e.target.value)}
+                          placeholder="Poster"
+                          className={smallInput}
+                          disabled={loading}
+                        />
+                        <input
+                          type="text"
+                          value={fileMeta[idx]?.source_url || ""}
+                          onChange={(e) => updateMeta(idx, "source_url", e.target.value)}
+                          placeholder="URL"
+                          className={smallInput}
+                          disabled={loading}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Analyst notes */}
+              <div className="mt-3">
+                <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">Analyst Notes</label>
+                <textarea
+                  value={analystNotes}
+                  onChange={(e) => setAnalystNotes(e.target.value)}
+                  placeholder="Additional context or observations..."
+                  rows={2}
+                  className={`${inputClasses} resize-none`}
+                  disabled={loading}
+                />
+              </div>
+
               {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+
+              {lastResult && (
+                <div className="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3">
+                  <p className="text-xs text-emerald-400 font-semibold">
+                    Batch processed: {lastResult.processed} images
+                    {lastResult.failed > 0 && <span className="text-red-400"> ({lastResult.failed} failed)</span>}
+                  </p>
+                  <p className="text-[10px] text-emerald-400/50 mt-0.5 font-mono">
+                    ID: {lastResult.batch.batch_id.slice(0, 12)}...
+                  </p>
+                </div>
+              )}
 
               <button
                 onClick={handleSubmit}
@@ -173,14 +272,14 @@ export default function AdminPage() {
                 {loading ? (
                   <>
                     <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                    Processing...
+                    Processing {files.length} image{files.length !== 1 ? "s" : ""}...
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    Add to Database
+                    Ingest {files.length > 0 ? `${files.length} Image${files.length !== 1 ? "s" : ""}` : "Batch"}
                   </>
                 )}
               </button>
@@ -189,7 +288,7 @@ export default function AdminPage() {
 
           {/* Right: Database grid */}
           <div className="lg:col-span-3">
-            <DatabaseGrid memes={memes} onDelete={handleDelete} />
+            <DatabaseGrid batches={batches} onDelete={handleDelete} />
           </div>
         </div>
       </main>
