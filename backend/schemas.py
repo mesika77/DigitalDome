@@ -3,6 +3,16 @@ from datetime import date, datetime
 from typing import Optional
 
 
+class MemeCreate(BaseModel):
+    filename: str
+    filepath: str
+    phash: str
+    source: str
+    community: str
+    date_detected: date
+    context_notes: Optional[str] = None
+
+
 class FlaggedMemeResponse(BaseModel):
     id: int
     filename: str
