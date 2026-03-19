@@ -9,6 +9,9 @@ class UploadBatch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     batch_id = Column(String, unique=True, index=True, nullable=False)
+    platform = Column(String, nullable=True)
+    original_poster = Column(String, nullable=True)
+    source_url = Column(String, nullable=True)
     analyst_notes = Column(Text, nullable=True)
     image_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
