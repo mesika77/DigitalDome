@@ -147,6 +147,12 @@ export default function AdminPage() {
               </svg>
               Gateway
             </Link>
+            <Link
+              to="/dashboard"
+              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/50 hover:text-white/70 transition-colors"
+            >
+              Dashboard
+            </Link>
           </div>
         </div>
       </header>

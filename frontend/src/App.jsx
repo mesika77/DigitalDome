@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import GatewayPage from "./pages/GatewayPage";
 import AdminPage from "./pages/AdminPage";
+import DashboardPage from "./pages/DashboardPage";
 
 class ErrorBoundary extends Component {
   state = { hasError: false };
@@ -63,6 +64,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<GatewayPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
         </Routes>
       </ErrorBoundary>
     </BrowserRouter>
