@@ -418,6 +418,57 @@ async def get_similar_memes(
 
 
 # ---------------------------------------------------------------------------
+# Rehash endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/rehash")
+async def rehash_all(db: Session = Depends(get_db)):
+    memes = db.query(FlaggedMeme).all()
+    updated = 0
+    failed = 0
+    skipped = 0
+
+    for meme in memes:
+        if meme.phash and len(meme.phash) > 0:
+            skipped += 1
+            continue
+
+        filepath = None
+        possible_paths = [
+            meme.filepath,
+            meme.thumbnail_url,
+            f"uploads/source/{meme.filename}" if meme.filename else None,
+        ]
+
+        for path in possible_paths:
+            if path and os.path.exists(path):
+                filepath = path
+                break
+
+        if not filepath:
+            failed += 1
+            continue
+
+        try:
+            new_hash = compute_phash(filepath)
+            meme.phash = new_hash
+            db.commit()
+            updated += 1
+        except Exception:
+            failed += 1
+            continue
+
+    return {
+        "message": "Rehash complete",
+        "updated": updated,
+        "skipped": skipped,
+        "failed": failed,
+        "total": len(memes),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Check endpoint
 # ---------------------------------------------------------------------------
 
