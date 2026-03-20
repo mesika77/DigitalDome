@@ -75,6 +75,9 @@ function SimilarityBar({ score, label = "Similarity", color }) {
 }
 
 function BlockedCard({ result }) {
+  const hasDbMatch = !!result.match;
+  const contextData = result.match?.context || result.ai_context;
+
   return (
     <div className="rounded-2xl border border-red-500/20 bg-linear-to-b from-red-500/10 to-red-950/20 p-6 animate-fade-in-up animate-pulse-glow">
       <div className="flex items-start gap-3 mb-4">
@@ -88,12 +91,14 @@ function BlockedCard({ result }) {
             Upload Blocked
           </h3>
           <p className="text-sm text-white/40 mt-0.5">
-            This content was detected in our radical community database.
+            {hasDbMatch
+              ? "This content was detected in our radical community database."
+              : "AI analysis detected harmful content in this upload."}
           </p>
         </div>
       </div>
 
-      {result.match && (
+      {hasDbMatch && (
         <div className="grid grid-cols-2 gap-3 my-4 p-3 rounded-xl bg-black/30 border border-white/5">
           {result.uploaded_image_url && (
             <div>
@@ -116,7 +121,7 @@ function BlockedCard({ result }) {
         </div>
       )}
 
-      {result.match && (
+      {hasDbMatch && (
         <div className="rounded-xl bg-black/20 border border-white/5 p-3 mb-4">
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
@@ -135,10 +140,12 @@ function BlockedCard({ result }) {
         </div>
       )}
 
-      <SimilarityBar score={result.similarity_score} color="text-red-400" />
+      {hasDbMatch && (
+        <SimilarityBar score={result.similarity_score} color="text-red-400" />
+      )}
 
-      {result.match?.context && (
-        <ContextCard context={result.match.context} borderColor="border-red-500/20" />
+      {contextData && (
+        <ContextCard context={contextData} borderColor="border-red-500/20" />
       )}
 
       {result.ai_analysis?.analysis && result.ai_analysis.analysis !== "AI analysis unavailable \u2014 falling back to hash-only matching." && (
@@ -159,6 +166,9 @@ function BlockedCard({ result }) {
 }
 
 function PendingCard({ result }) {
+  const hasDbMatch = !!result.match;
+  const contextData = result.match?.context || result.ai_context;
+
   return (
     <div className="rounded-2xl border border-amber-500/20 bg-linear-to-b from-amber-500/10 to-amber-950/20 p-6 animate-fade-in-up">
       <div className="flex items-start gap-3 mb-4">
@@ -172,15 +182,19 @@ function PendingCard({ result }) {
             Held for Manual Review
           </h3>
           <p className="text-sm text-white/40 mt-0.5">
-            This content shows similarity to flagged material.
+            {hasDbMatch
+              ? "This content shows similarity to flagged material."
+              : "AI analysis flagged this content for review."}
           </p>
         </div>
       </div>
 
-      <SimilarityBar score={result.similarity_score} label="Match Score" color="text-amber-400" />
+      {hasDbMatch && (
+        <SimilarityBar score={result.similarity_score} label="Match Score" color="text-amber-400" />
+      )}
 
-      {result.match?.context && (
-        <ContextCard context={result.match.context} borderColor="border-amber-500/20" />
+      {contextData && (
+        <ContextCard context={contextData} borderColor="border-amber-500/20" />
       )}
 
       {result.ai_analysis?.analysis && result.ai_analysis.analysis !== "AI analysis unavailable \u2014 falling back to hash-only matching." && (

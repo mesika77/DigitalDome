@@ -66,3 +66,4 @@ class CheckResult(BaseModel):
     ai_analysis: Optional[AIAnalysisResult] = None
     ai_confidence: int = 0
     uploaded_image_url: Optional[str] = None
+    ai_context: Optional[dict] = None

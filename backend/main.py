@@ -27,6 +27,7 @@ from ai_analysis import analyze_with_claude, generate_context_notes, generate_me
 load_dotenv()
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+MIN_MATCH_SIMILARITY = 85
 
 app = FastAPI(
     title="DigitalDome Threat Intelligence API",
@@ -379,55 +380,55 @@ async def check_image_logic(file: UploadFile, db: Session) -> dict:
     try:
         all_entries = db.query(FlaggedMeme).all()
 
-        if not all_entries:
-            ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
-            ai_obj = AIAnalysisResult(**ai_result)
-            if ai_result.get("contains_hate_content") and ai_result.get("confidence", 0) > 75:
-                return CheckResult(
-                    status="pending",
-                    similarity_score=0,
-                    match=None,
-                    ai_analysis=ai_obj,
-                    ai_confidence=ai_result.get("confidence", 0),
-                    uploaded_image_url=uploaded_image_url,
-                ).model_dump()
-            return CheckResult(
-                status="approved",
-                similarity_score=0,
-                match=None,
-                ai_analysis=ai_obj,
-                ai_confidence=ai_result.get("confidence", 0),
-                uploaded_image_url=uploaded_image_url,
-            ).model_dump()
-
         best_match = None
         best_distance = 64
-
         for entry in all_entries:
             distance = hamming_distance(uploaded_hash, entry.phash)
             if distance < best_distance:
                 best_distance = distance
                 best_match = entry
 
-        score = similarity_score(best_distance)
+        score = similarity_score(best_distance) if best_match else 0
+        has_meaningful_match = best_match is not None and score >= MIN_MATCH_SIMILARITY
 
         ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
         ai_obj = AIAnalysisResult(**ai_result)
         ai_recommendation = ai_result.get("recommendation", "approve")
 
-        match_severity = "none"
-        if best_match and best_match.context and isinstance(best_match.context, dict):
-            match_severity = best_match.context.get("severity", "none").lower()
+        if has_meaningful_match:
+            match_severity = "none"
+            if best_match.context and isinstance(best_match.context, dict):
+                match_severity = best_match.context.get("severity", "none").lower()
 
-        status = _determine_status(best_distance, ai_recommendation, match_severity)
+            status = _determine_status(best_distance, ai_recommendation, match_severity)
+
+            return CheckResult(
+                status=status,
+                similarity_score=score,
+                match=_meme_to_response(best_match) if status != "approved" else None,
+                ai_analysis=ai_obj,
+                ai_confidence=ai_result.get("confidence", 0),
+                uploaded_image_url=uploaded_image_url,
+            ).model_dump()
+
+        ai_context = None
+        if ai_recommendation == "block":
+            ai_context = await generate_meme_context(filepath, cache_key=uploaded_hash)
+            status = "blocked"
+        elif ai_recommendation == "review":
+            ai_context = await generate_meme_context(filepath, cache_key=uploaded_hash)
+            status = "pending"
+        else:
+            status = "approved"
 
         return CheckResult(
             status=status,
-            similarity_score=score,
-            match=_meme_to_response(best_match) if status != "approved" else None,
+            similarity_score=0,
+            match=None,
             ai_analysis=ai_obj,
             ai_confidence=ai_result.get("confidence", 0),
             uploaded_image_url=uploaded_image_url,
+            ai_context=ai_context,
         ).model_dump()
     except RateLimitExceeded:
         Path(filepath).unlink(missing_ok=True)
