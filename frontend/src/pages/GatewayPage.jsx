@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import DropZone from "../components/DropZone";
 import ResultCard from "../components/ResultCard";
 import { checkImage, getDatabase } from "../api/client";
@@ -36,7 +37,11 @@ export default function GatewayPage() {
       setResult(data);
       setChecksToday((p) => p + 1);
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to analyze content");
+      const detail = err.response?.data?.detail || "Failed to analyze content";
+      if (err.response?.status === 429) {
+        toast.error(detail);
+      }
+      setError(detail);
     } finally {
       setLoading(false);
     }

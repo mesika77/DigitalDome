@@ -21,7 +21,7 @@ from schemas import (
     BatchInjectResponse,
 )
 from image_utils import compute_phash, hamming_distance, similarity_score
-from ai_analysis import analyze_with_claude, generate_context_notes, generate_meme_context
+from ai_analysis import analyze_with_claude, generate_context_notes, generate_meme_context, RateLimitExceeded
 
 load_dotenv()
 
@@ -111,10 +111,13 @@ async def inject_meme(
     filename, filepath = _save_upload(file, "source")
     phash = compute_phash(filepath)
 
-    if not context_notes:
-        context_notes = await generate_context_notes(filepath)
-
-    context = await generate_meme_context(filepath)
+    try:
+        if not context_notes:
+            context_notes = await generate_context_notes(filepath, cache_key=phash)
+        context = await generate_meme_context(filepath, cache_key=phash)
+    except RateLimitExceeded:
+        Path(filepath).unlink(missing_ok=True)
+        raise HTTPException(status_code=429, detail="Rate limit reached — please wait a moment before uploading more images.")
 
     detected = date.today()
     if date_detected:
@@ -154,9 +157,15 @@ async def inject_batch(
     [{"platform": "Reddit", "original_poster": "u/foo", "source_url": "..."}, ...]
     If omitted or shorter than files, missing entries get defaults.
     """
+    MAX_BATCH_SIZE = 50
     image_files = [f for f in files if f.content_type and f.content_type.startswith("image/")]
     if not image_files:
         raise HTTPException(status_code=400, detail="No valid image files provided")
+    if len(image_files) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Batch too large — max {MAX_BATCH_SIZE} images per batch",
+        )
 
     meta_list = []
     if image_metadata:
@@ -177,6 +186,7 @@ async def inject_batch(
 
     processed = 0
     failed = 0
+    saved_files: list[str] = []
 
     for i, file in enumerate(image_files):
         try:
@@ -186,8 +196,9 @@ async def inject_batch(
             img_source_url = meta.get("source_url") or None
 
             filename, filepath = _save_upload(file, "source")
+            saved_files.append(filepath)
             phash = compute_phash(filepath)
-            context = await generate_meme_context(filepath)
+            context = await generate_meme_context(filepath, cache_key=phash)
 
             meme = FlaggedMeme(
                 upload_batch_id=batch.id,
@@ -206,6 +217,15 @@ async def inject_batch(
             db.add(meme)
             db.commit()
             processed += 1
+        except RateLimitExceeded:
+            for fp in saved_files:
+                Path(fp).unlink(missing_ok=True)
+            db.delete(batch)
+            db.commit()
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit reached — please wait a moment before uploading more images.",
+            )
         except Exception:
             failed += 1
 
@@ -304,78 +324,85 @@ async def check_image(
     uploaded_hash = compute_phash(filepath)
     uploaded_image_url = f"/uploads/gateway/{filename}"
 
-    all_entries = db.query(FlaggedMeme).all()
+    try:
+        all_entries = db.query(FlaggedMeme).all()
 
-    if not all_entries:
-        ai_result = await analyze_with_claude(filepath)
-        ai_obj = AIAnalysisResult(**ai_result)
-        if ai_result.get("contains_hate_content") and ai_result.get("confidence", 0) > 75:
+        if not all_entries:
+            ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
+            ai_obj = AIAnalysisResult(**ai_result)
+            if ai_result.get("contains_hate_content") and ai_result.get("confidence", 0) > 75:
+                return CheckResult(
+                    status="pending",
+                    similarity_score=0,
+                    match=None,
+                    ai_analysis=ai_obj,
+                    ai_confidence=ai_result.get("confidence", 0),
+                    uploaded_image_url=uploaded_image_url,
+                )
             return CheckResult(
-                status="pending",
+                status="approved",
                 similarity_score=0,
                 match=None,
                 ai_analysis=ai_obj,
                 ai_confidence=ai_result.get("confidence", 0),
                 uploaded_image_url=uploaded_image_url,
             )
-        return CheckResult(
-            status="approved",
-            similarity_score=0,
-            match=None,
-            ai_analysis=ai_obj,
-            ai_confidence=ai_result.get("confidence", 0),
-            uploaded_image_url=uploaded_image_url,
-        )
 
-    best_match = None
-    best_distance = 64
+        best_match = None
+        best_distance = 64
 
-    for entry in all_entries:
-        distance = hamming_distance(uploaded_hash, entry.phash)
-        if distance < best_distance:
-            best_distance = distance
-            best_match = entry
+        for entry in all_entries:
+            distance = hamming_distance(uploaded_hash, entry.phash)
+            if distance < best_distance:
+                best_distance = distance
+                best_match = entry
 
-    score = similarity_score(best_distance)
+        score = similarity_score(best_distance)
 
-    if best_distance <= 10:
-        status = "blocked"
-        ai_result = await analyze_with_claude(filepath)
+        if best_distance <= 10:
+            status = "blocked"
+            ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
+            ai_obj = AIAnalysisResult(**ai_result)
+            return CheckResult(
+                status=status,
+                similarity_score=score,
+                match=_meme_to_response(best_match),
+                ai_analysis=ai_obj,
+                ai_confidence=ai_result.get("confidence", 0),
+                uploaded_image_url=uploaded_image_url,
+            )
+
+        if best_distance <= 20:
+            status = "pending"
+            ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
+            ai_obj = AIAnalysisResult(**ai_result)
+            return CheckResult(
+                status=status,
+                similarity_score=score,
+                match=_meme_to_response(best_match),
+                ai_analysis=ai_obj,
+                ai_confidence=ai_result.get("confidence", 0),
+                uploaded_image_url=uploaded_image_url,
+            )
+
+        ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
         ai_obj = AIAnalysisResult(**ai_result)
+        if ai_result.get("contains_hate_content") and ai_result.get("confidence", 0) > 75:
+            status = "pending"
+        else:
+            status = "approved"
+
         return CheckResult(
             status=status,
             similarity_score=score,
-            match=_meme_to_response(best_match),
+            match=_meme_to_response(best_match) if status != "approved" else None,
             ai_analysis=ai_obj,
             ai_confidence=ai_result.get("confidence", 0),
             uploaded_image_url=uploaded_image_url,
         )
-
-    if best_distance <= 20:
-        status = "pending"
-        ai_result = await analyze_with_claude(filepath)
-        ai_obj = AIAnalysisResult(**ai_result)
-        return CheckResult(
-            status=status,
-            similarity_score=score,
-            match=_meme_to_response(best_match),
-            ai_analysis=ai_obj,
-            ai_confidence=ai_result.get("confidence", 0),
-            uploaded_image_url=uploaded_image_url,
+    except RateLimitExceeded:
+        Path(filepath).unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit reached — please wait a moment before uploading more images.",
         )
-
-    ai_result = await analyze_with_claude(filepath)
-    ai_obj = AIAnalysisResult(**ai_result)
-    if ai_result.get("contains_hate_content") and ai_result.get("confidence", 0) > 75:
-        status = "pending"
-    else:
-        status = "approved"
-
-    return CheckResult(
-        status=status,
-        similarity_score=score,
-        match=_meme_to_response(best_match) if status != "approved" else None,
-        ai_analysis=ai_obj,
-        ai_confidence=ai_result.get("confidence", 0),
-        uploaded_image_url=uploaded_image_url,
-    )

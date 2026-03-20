@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import DropZone from "../components/DropZone";
 import DatabaseGrid from "../components/DatabaseGrid";
 import { injectBatch, getBatches, deleteMeme, deleteBatch } from "../api/client";
@@ -86,7 +87,11 @@ export default function AdminPage() {
       setSuccessCount((p) => p + result.processed);
       fetchBatches();
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to process batch");
+      const detail = err.response?.data?.detail || "Failed to process batch";
+      if (err.response?.status === 429) {
+        toast.error(detail);
+      }
+      setError(detail);
     } finally {
       setLoading(false);
     }

@@ -1,10 +1,72 @@
 import os
 import base64
 import json
+import logging
 import mimetypes
+import time
+from collections import OrderedDict
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
+
+MAX_CALLS_PER_MINUTE = int(os.getenv("AI_RATE_LIMIT", "100"))
+CACHE_MAX_SIZE = 256
+CACHE_TTL_SECONDS = 3600
+
+
+class _RateLimiter:
+    """Simple sliding-window rate limiter for outbound API calls."""
+
+    def __init__(self, max_calls: int, window_seconds: int = 60):
+        self.max_calls = max_calls
+        self.window = window_seconds
+        self._timestamps: list[float] = []
+
+    def allow(self) -> bool:
+        now = time.monotonic()
+        self._timestamps = [t for t in self._timestamps if now - t < self.window]
+        if len(self._timestamps) >= self.max_calls:
+            return False
+        self._timestamps.append(now)
+        return True
+
+
+class _LRUCache:
+    """Bounded LRU cache with TTL for analysis results."""
+
+    def __init__(self, max_size: int = CACHE_MAX_SIZE, ttl: int = CACHE_TTL_SECONDS):
+        self._store: OrderedDict[str, tuple[float, object]] = OrderedDict()
+        self._max_size = max_size
+        self._ttl = ttl
+
+    def get(self, key: str):
+        if key not in self._store:
+            return None
+        ts, value = self._store[key]
+        if time.monotonic() - ts > self._ttl:
+            del self._store[key]
+            return None
+        self._store.move_to_end(key)
+        return value
+
+    def put(self, key: str, value: object):
+        self._store[key] = (time.monotonic(), value)
+        self._store.move_to_end(key)
+        while len(self._store) > self._max_size:
+            self._store.popitem(last=False)
+
+
+class RateLimitExceeded(Exception):
+    """Raised when the AI API rate limit is reached."""
+    pass
+
+
+_rate_limiter = _RateLimiter(MAX_CALLS_PER_MINUTE)
+_analysis_cache = _LRUCache()
+_context_cache = _LRUCache()
+_notes_cache = _LRUCache()
 
 SYSTEM_PROMPT = """You are a content moderation AI specialized in detecting hate speech, \
 antisemitism, and extremist content in images and memes.
@@ -41,10 +103,19 @@ def _image_to_base64(filepath: str) -> tuple[str, str]:
     return data, mime_type
 
 
-async def analyze_with_claude(filepath: str) -> dict:
+async def analyze_with_claude(filepath: str, cache_key: str | None = None) -> dict:
+    if cache_key:
+        cached = _analysis_cache.get(cache_key)
+        if cached is not None:
+            logger.info("analyze_with_claude cache hit for %s", cache_key[:12])
+            return dict(cached)
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key == "your_key_here":
         return dict(FALLBACK_RESULT)
+
+    if not _rate_limiter.allow():
+        raise RateLimitExceeded("Rate limit reached — please wait a moment before uploading more images.")
 
     try:
         import anthropic
@@ -81,10 +152,14 @@ async def analyze_with_claude(filepath: str) -> dict:
         start = response_text.find("{")
         end = response_text.rfind("}") + 1
         if start != -1 and end > start:
-            return json.loads(response_text[start:end])
+            result = json.loads(response_text[start:end])
+            if cache_key:
+                _analysis_cache.put(cache_key, result)
+            return result
         return dict(FALLBACK_RESULT)
 
-    except Exception:
+    except Exception as e:
+        logger.error("analyze_with_claude failed: %s", e)
         return dict(FALLBACK_RESULT)
 
 
@@ -109,10 +184,19 @@ CONTEXT_FALLBACK = {
 }
 
 
-async def generate_meme_context(filepath: str) -> dict:
+async def generate_meme_context(filepath: str, cache_key: str | None = None) -> dict:
+    if cache_key:
+        cached = _context_cache.get(cache_key)
+        if cached is not None:
+            logger.info("generate_meme_context cache hit for %s", cache_key[:12])
+            return dict(cached)
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key == "your_key_here":
         return dict(CONTEXT_FALLBACK)
+
+    if not _rate_limiter.allow():
+        raise RateLimitExceeded("Rate limit reached — please wait a moment before uploading more images.")
 
     try:
         import anthropic
@@ -149,17 +233,30 @@ async def generate_meme_context(filepath: str) -> dict:
         start = response_text.find("{")
         end = response_text.rfind("}") + 1
         if start != -1 and end > start:
-            return json.loads(response_text[start:end])
+            result = json.loads(response_text[start:end])
+            if cache_key:
+                _context_cache.put(cache_key, result)
+            return result
         return dict(CONTEXT_FALLBACK)
 
-    except Exception:
+    except Exception as e:
+        logger.error("generate_meme_context failed: %s", e)
         return dict(CONTEXT_FALLBACK)
 
 
-async def generate_context_notes(filepath: str) -> str | None:
+async def generate_context_notes(filepath: str, cache_key: str | None = None) -> str | None:
+    if cache_key:
+        cached = _notes_cache.get(cache_key)
+        if cached is not None:
+            logger.info("generate_context_notes cache hit for %s", cache_key[:12])
+            return cached
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key == "your_key_here":
         return None
+
+    if not _rate_limiter.allow():
+        raise RateLimitExceeded("Rate limit reached — please wait a moment before uploading more images.")
 
     try:
         import anthropic
@@ -191,6 +288,10 @@ async def generate_context_notes(filepath: str) -> str | None:
             ],
         )
 
-        return message.content[0].text.strip()
-    except Exception:
+        result = message.content[0].text.strip()
+        if cache_key:
+            _notes_cache.put(cache_key, result)
+        return result
+    except Exception as e:
+        logger.error("generate_context_notes failed: %s", e)
         return None

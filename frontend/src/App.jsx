@@ -1,5 +1,6 @@
 import { Component } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 import GatewayPage from "./pages/GatewayPage";
 import AdminPage from "./pages/AdminPage";
 
@@ -41,6 +42,24 @@ export default function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            style: {
+              background: "#1a1a1e",
+              color: "#fff",
+              border: "1px solid rgba(255,255,255,0.08)",
+              fontSize: "14px",
+            },
+            error: {
+              duration: 5000,
+              style: {
+                background: "#1a1a1e",
+                border: "1px solid rgba(239,68,68,0.3)",
+              },
+            },
+          }}
+        />
         <Routes>
           <Route path="/" element={<GatewayPage />} />
           <Route path="/admin" element={<AdminPage />} />

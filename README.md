@@ -10,7 +10,7 @@
 
 - Python 3.10+
 - Node.js 18+
-- (Optional) An [Anthropic API key](https://console.anthropic.com/) for AI analysis — the app works without it using hash-only matching
+- An [Anthropic API key](https://console.anthropic.com/) with credits — required for AI image analysis
 
 ### Backend
 
@@ -18,8 +18,7 @@
 cd backend
 pip install -r requirements.txt
 
-# Add your Anthropic API key (optional)
-# Edit .env and replace your_key_here with your actual key
+# Configure your .env (see Environment Variables below)
 
 uvicorn main:app --reload --port 8000
 ```
@@ -52,11 +51,11 @@ Open **http://localhost:5173** in your browser.
 
 | Component | Technology |
 |-----------|------------|
-| Frontend | React (Vite), TailwindCSS |
+| Frontend | React 19 (Vite), TailwindCSS 4 |
 | Backend | FastAPI (Python) |
-| Database | SQLite + SQLAlchemy |
+| Database | PostgreSQL (Supabase) + SQLAlchemy |
 | Image Hashing | imagehash (pHash) |
-| AI Analysis | Anthropic Claude (claude-opus-4-6) |
+| AI Analysis | Anthropic Claude (Haiku 4 / Haiku 4.5) |
 | Image Storage | Local filesystem (`backend/uploads/`) |
 
 ---
@@ -65,8 +64,13 @@ Open **http://localhost:5173** in your browser.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/inject` | Add a meme to the flagged database |
+| POST | `/api/inject` | Add a single meme to the flagged database |
+| POST | `/api/inject/batch` | Batch-inject multiple memes (max 50) |
 | GET | `/api/database` | Get all flagged memes |
+| DELETE | `/api/database/{id}` | Delete a flagged meme |
+| GET | `/api/batches` | Get all upload batches |
+| GET | `/api/batches/{batch_id}` | Get a specific batch |
+| DELETE | `/api/batches/{batch_id}` | Delete a batch and its memes |
 | POST | `/api/check` | Check an image against the database |
 | GET | `/uploads/{folder}/{filename}` | Serve uploaded images |
 
@@ -79,7 +83,15 @@ Create a `.env` file in the `backend/` directory:
 ```
 ANTHROPIC_API_KEY=your_key_here
 UPLOAD_DIR=uploads
-DATABASE_URL=sqlite:///./digitaldome.db
+DATABASE_URL=postgresql://user:pass@host:port/dbname
+AI_RATE_LIMIT=100
 ```
 
-The app works fully offline (hash matching) when no API key is provided. Claude AI analysis is used as an additional layer when the key is available.
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key for AI image analysis |
+| `UPLOAD_DIR` | No | `uploads` | Directory for uploaded images |
+| `DATABASE_URL` | No | `sqlite:///./digitaldome.db` | Database connection string |
+| `AI_RATE_LIMIT` | No | `100` | Max AI API calls per minute (uploads are rejected if exceeded) |
+
+Every uploaded image requires AI analysis. If the rate limit is exceeded or the API key is missing/invalid, uploads will be rejected with a 429 error and a user-visible notification.
