@@ -62,7 +62,7 @@ export async function checkImage(file) {
   return data;
 }
 
-export async function getSimilarMemes(memeId, threshold = 40) {
+export async function getSimilarMemes(memeId, threshold = 15) {
   const { data } = await api.get(`/api/similar/${memeId}?threshold=${threshold}`);
   return data;
 }
