@@ -8,18 +8,18 @@ def compute_phash(filepath: str) -> str:
 
 
 def hamming_distance(hash1: str, hash2: str) -> int:
-    if not hash1 or not hash2:
-        return 64
-    try:
-        # Clean the hash strings - remove any whitespace or unexpected chars
-        hash1 = hash1.strip()
-        hash2 = hash2.strip()
-        h1 = imagehash.hex_to_hash(hash1)
-        h2 = imagehash.hex_to_hash(hash2)
-        return h1 - h2
-    except Exception:
-        # If hashes are incompatible lengths or formats, return max distance
-        return 64
+      if not hash1 or not hash2:
+          return 64
+      hash1 = hash1.strip().lower()
+      hash2 = hash2.strip().lower()
+      if len(hash1) != len(hash2):
+          return 64
+      try:
+          n1 = int(hash1, 16)
+          n2 = int(hash2, 16)
+          return bin(n1 ^ n2).count('1')
+      except ValueError:
+          return 64
 
 
 def similarity_score(distance: int) -> int:
