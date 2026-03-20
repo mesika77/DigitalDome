@@ -258,7 +258,7 @@ export default function DashboardPage() {
               to="/admin"
               className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/40 hover:text-white/60 transition-colors"
             >
-              Intel Console
+              DB Input
             </Link>
             <span className="px-3 py-1.5 rounded-lg bg-violet-500/15 text-xs text-violet-400 font-medium ring-1 ring-violet-500/20">
               Dashboard
