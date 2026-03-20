@@ -99,13 +99,45 @@ FALLBACK_RESULT = {
 }
 
 
+MAX_BASE64_BYTES = 5 * 1024 * 1024  # Anthropic's 5 MB limit for base64 images
+
+
 def _image_to_base64(filepath: str) -> tuple[str, str]:
     mime_type, _ = mimetypes.guess_type(filepath)
     if not mime_type:
         mime_type = "image/png"
+
     with open(filepath, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode("utf-8")
-    return data, mime_type
+        raw = f.read()
+
+    encoded = base64.standard_b64encode(raw).decode("utf-8")
+    if len(encoded) <= MAX_BASE64_BYTES:
+        return encoded, mime_type
+
+    from PIL import Image
+    import io
+
+    img = Image.open(filepath)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+    output_format = "JPEG"
+    output_mime = "image/jpeg"
+
+    for quality in (85, 70, 50, 30):
+        buf = io.BytesIO()
+        img.save(buf, format=output_format, quality=quality, optimize=True)
+        encoded = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
+        if len(encoded) <= MAX_BASE64_BYTES:
+            return encoded, output_mime
+
+    while True:
+        w, h = img.size
+        img = img.resize((w * 3 // 4, h * 3 // 4), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format=output_format, quality=50, optimize=True)
+        encoded = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
+        if len(encoded) <= MAX_BASE64_BYTES:
+            return encoded, output_mime
 
 
 async def analyze_with_claude(filepath: str, cache_key: str | None = None) -> dict:
