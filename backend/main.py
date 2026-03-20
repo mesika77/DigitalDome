@@ -422,7 +422,7 @@ async def get_similar_memes(
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/rehash")
+@app.get("/api/rehash")
 async def rehash_all(db: Session = Depends(get_db)):
     memes = db.query(FlaggedMeme).all()
     updated = 0
