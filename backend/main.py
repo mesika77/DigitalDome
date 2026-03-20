@@ -5,8 +5,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
@@ -27,20 +28,44 @@ load_dotenv()
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 
-app = FastAPI(title="DigitalDome", description="Pre-upload hate content gateway")
-
-CORS_ORIGINS = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,https://digitaldome.vercel.app",
+app = FastAPI(
+    title="DigitalDome Threat Intelligence API",
+    description="Real-time hate meme detection and intelligence database. Subscribe at digitaldome.io",
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in CORS_ORIGINS.split(",")],
+    allow_origins=[
+        "https://digitaldome.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+API_KEYS = {
+    "demo-police-001": "Law Enforcement Demo",
+    "demo-intel-001": "Intelligence Unit Demo",
+    "demo-social-001": "Social Media Platform Demo",
+    "demo-judge-001": "Hackathon Judge Access",
+}
+
+
+async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
+    if api_key not in API_KEYS:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key. Contact DigitalDome to subscribe.",
+        )
+    return API_KEYS[api_key]
+
 
 # Dev-only: drop and recreate DB when schema changes (no Alembic migrations in dev)
 Base.metadata.create_all(bind=engine)
@@ -321,11 +346,7 @@ def delete_batch(batch_id: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/check", response_model=CheckResult)
-async def check_image(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-):
+async def check_image_logic(file: UploadFile, db: Session) -> dict:
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
@@ -347,7 +368,7 @@ async def check_image(
                     ai_analysis=ai_obj,
                     ai_confidence=ai_result.get("confidence", 0),
                     uploaded_image_url=uploaded_image_url,
-                )
+                ).model_dump()
             return CheckResult(
                 status="approved",
                 similarity_score=0,
@@ -355,7 +376,7 @@ async def check_image(
                 ai_analysis=ai_obj,
                 ai_confidence=ai_result.get("confidence", 0),
                 uploaded_image_url=uploaded_image_url,
-            )
+            ).model_dump()
 
         best_match = None
         best_distance = 64
@@ -379,7 +400,7 @@ async def check_image(
                 ai_analysis=ai_obj,
                 ai_confidence=ai_result.get("confidence", 0),
                 uploaded_image_url=uploaded_image_url,
-            )
+            ).model_dump()
 
         if best_distance <= 20:
             status = "pending"
@@ -392,7 +413,7 @@ async def check_image(
                 ai_analysis=ai_obj,
                 ai_confidence=ai_result.get("confidence", 0),
                 uploaded_image_url=uploaded_image_url,
-            )
+            ).model_dump()
 
         ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
         ai_obj = AIAnalysisResult(**ai_result)
@@ -408,7 +429,7 @@ async def check_image(
             ai_analysis=ai_obj,
             ai_confidence=ai_result.get("confidence", 0),
             uploaded_image_url=uploaded_image_url,
-        )
+        ).model_dump()
     except RateLimitExceeded:
         Path(filepath).unlink(missing_ok=True)
         raise HTTPException(
@@ -418,3 +439,74 @@ async def check_image(
     except AIAnalysisError as e:
         Path(filepath).unlink(missing_ok=True)
         raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.post("/api/check", response_model=CheckResult)
+async def check_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    return await check_image_logic(file, db)
+
+
+# ---------------------------------------------------------------------------
+# v1 API endpoints (API-key-protected threat intelligence API)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/status")
+async def api_status(db: Session = Depends(get_db)):
+    total = db.query(FlaggedMeme).count()
+    return {
+        "platform": "DigitalDome Threat Intelligence API",
+        "status": "operational",
+        "total_flagged_memes": total,
+        "version": "1.0",
+        "contact": "api@digitaldome.io",
+    }
+
+
+@app.get("/api/v1/memes")
+async def get_all_memes(
+    client: str = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    memes = db.query(FlaggedMeme).all()
+    return {
+        "client": client,
+        "total": len(memes),
+        "data": memes,
+    }
+
+
+@app.get("/api/v1/memes/severity/{level}")
+async def get_memes_by_severity(
+    level: str,
+    client: str = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    if level not in ["high", "medium", "low", "none"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Severity must be: high, medium, low, or none",
+        )
+    memes = db.query(FlaggedMeme).filter(
+        FlaggedMeme.context["severity"].astext == level
+    ).all()
+    return {
+        "client": client,
+        "severity_filter": level,
+        "total": len(memes),
+        "data": memes,
+    }
+
+
+@app.post("/api/v1/check")
+async def check_image_v1(
+    file: UploadFile = File(...),
+    client: str = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    result = await check_image_logic(file, db)
+    result["client"] = client
+    return result
