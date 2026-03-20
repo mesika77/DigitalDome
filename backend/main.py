@@ -385,6 +385,7 @@ async def get_similar_memes(
     all_memes = db.query(FlaggedMeme).filter(FlaggedMeme.id != meme_id).all()
 
     results = []
+    failed = 0
     for meme in all_memes:
         if not meme.phash:
             continue
@@ -403,7 +404,9 @@ async def get_similar_memes(
                 "similarity_score": score,
                 "hamming_distance": distance,
             })
-        except Exception:
+        except Exception as e:
+            print(f"Error comparing meme {meme.id}: {e} | phash: {meme.phash}")
+            failed += 1
             continue
 
     results.sort(key=lambda x: x["similarity_score"], reverse=True)
@@ -413,6 +416,7 @@ async def get_similar_memes(
         "source_id": meme_id,
         "source_phash": source.phash,
         "total_similar": len(filtered),
+        "failed_comparisons": failed,
         "results": filtered,
     }
 
