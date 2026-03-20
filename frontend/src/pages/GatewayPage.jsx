@@ -38,7 +38,7 @@ export default function GatewayPage() {
       setChecksToday((p) => p + 1);
     } catch (err) {
       const detail = err.response?.data?.detail || "Failed to analyze content";
-      if (err.response?.status === 429) {
+      if (err.response?.status === 429 || err.response?.status === 503) {
         toast.error(detail);
       }
       setError(detail);

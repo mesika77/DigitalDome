@@ -63,6 +63,11 @@ class RateLimitExceeded(Exception):
     pass
 
 
+class AIAnalysisError(Exception):
+    """Raised when AI analysis fails and the image cannot be processed."""
+    pass
+
+
 _rate_limiter = _RateLimiter(MAX_CALLS_PER_MINUTE)
 _analysis_cache = _LRUCache()
 _context_cache = _LRUCache()
@@ -112,7 +117,7 @@ async def analyze_with_claude(filepath: str, cache_key: str | None = None) -> di
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key == "your_key_here":
-        return dict(FALLBACK_RESULT)
+        raise AIAnalysisError("Anthropic API key is not configured. Add a valid ANTHROPIC_API_KEY to .env")
 
     if not _rate_limiter.allow():
         raise RateLimitExceeded("Rate limit reached — please wait a moment before uploading more images.")
@@ -156,11 +161,13 @@ async def analyze_with_claude(filepath: str, cache_key: str | None = None) -> di
             if cache_key:
                 _analysis_cache.put(cache_key, result)
             return result
-        return dict(FALLBACK_RESULT)
+        raise AIAnalysisError("AI returned an unparseable response")
 
+    except (RateLimitExceeded, AIAnalysisError):
+        raise
     except Exception as e:
         logger.error("analyze_with_claude failed: %s", e)
-        return dict(FALLBACK_RESULT)
+        raise AIAnalysisError(f"AI analysis failed: {e}") from e
 
 
 CONTEXT_SYSTEM_PROMPT = """Analyze this image for hate content, antisemitism, or extremist symbolism.
@@ -193,7 +200,7 @@ async def generate_meme_context(filepath: str, cache_key: str | None = None) -> 
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key == "your_key_here":
-        return dict(CONTEXT_FALLBACK)
+        raise AIAnalysisError("Anthropic API key is not configured. Add a valid ANTHROPIC_API_KEY to .env")
 
     if not _rate_limiter.allow():
         raise RateLimitExceeded("Rate limit reached — please wait a moment before uploading more images.")
@@ -237,11 +244,13 @@ async def generate_meme_context(filepath: str, cache_key: str | None = None) -> 
             if cache_key:
                 _context_cache.put(cache_key, result)
             return result
-        return dict(CONTEXT_FALLBACK)
+        raise AIAnalysisError("AI returned an unparseable response")
 
+    except (RateLimitExceeded, AIAnalysisError):
+        raise
     except Exception as e:
         logger.error("generate_meme_context failed: %s", e)
-        return dict(CONTEXT_FALLBACK)
+        raise AIAnalysisError(f"AI analysis failed: {e}") from e
 
 
 async def generate_context_notes(filepath: str, cache_key: str | None = None) -> str | None:
@@ -253,7 +262,7 @@ async def generate_context_notes(filepath: str, cache_key: str | None = None) ->
 
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key or api_key == "your_key_here":
-        return None
+        raise AIAnalysisError("Anthropic API key is not configured. Add a valid ANTHROPIC_API_KEY to .env")
 
     if not _rate_limiter.allow():
         raise RateLimitExceeded("Rate limit reached — please wait a moment before uploading more images.")
@@ -292,6 +301,8 @@ async def generate_context_notes(filepath: str, cache_key: str | None = None) ->
         if cache_key:
             _notes_cache.put(cache_key, result)
         return result
+    except (RateLimitExceeded, AIAnalysisError):
+        raise
     except Exception as e:
         logger.error("generate_context_notes failed: %s", e)
-        return None
+        raise AIAnalysisError(f"AI analysis failed: {e}") from e

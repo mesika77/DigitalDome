@@ -21,7 +21,7 @@ from schemas import (
     BatchInjectResponse,
 )
 from image_utils import compute_phash, hamming_distance, similarity_score
-from ai_analysis import analyze_with_claude, generate_context_notes, generate_meme_context, RateLimitExceeded
+from ai_analysis import analyze_with_claude, generate_context_notes, generate_meme_context, RateLimitExceeded, AIAnalysisError
 
 load_dotenv()
 
@@ -118,6 +118,9 @@ async def inject_meme(
     except RateLimitExceeded:
         Path(filepath).unlink(missing_ok=True)
         raise HTTPException(status_code=429, detail="Rate limit reached — please wait a moment before uploading more images.")
+    except AIAnalysisError as e:
+        Path(filepath).unlink(missing_ok=True)
+        raise HTTPException(status_code=503, detail=str(e))
 
     detected = date.today()
     if date_detected:
@@ -226,6 +229,12 @@ async def inject_batch(
                 status_code=429,
                 detail="Rate limit reached — please wait a moment before uploading more images.",
             )
+        except AIAnalysisError as e:
+            for fp in saved_files:
+                Path(fp).unlink(missing_ok=True)
+            db.delete(batch)
+            db.commit()
+            raise HTTPException(status_code=503, detail=str(e))
         except Exception:
             failed += 1
 
@@ -406,3 +415,6 @@ async def check_image(
             status_code=429,
             detail="Rate limit reached — please wait a moment before uploading more images.",
         )
+    except AIAnalysisError as e:
+        Path(filepath).unlink(missing_ok=True)
+        raise HTTPException(status_code=503, detail=str(e))

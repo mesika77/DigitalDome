@@ -88,7 +88,7 @@ export default function AdminPage() {
       fetchBatches();
     } catch (err) {
       const detail = err.response?.data?.detail || "Failed to process batch";
-      if (err.response?.status === 429) {
+      if (err.response?.status === 429 || err.response?.status === 503) {
         toast.error(detail);
       }
       setError(detail);
