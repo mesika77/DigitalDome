@@ -417,6 +417,43 @@ async def get_similar_memes(
     }
 
 
+@app.get("/api/debug/similar/{meme_id}")
+async def debug_similar(meme_id: int, db: Session = Depends(get_db)):
+    source = db.query(FlaggedMeme).filter(FlaggedMeme.id == meme_id).first()
+    if not source:
+        return {"error": "Meme not found"}
+
+    all_memes = db.query(FlaggedMeme).filter(FlaggedMeme.id != meme_id).all()
+
+    results = []
+    errors = []
+
+    for meme in all_memes[:10]:  # test first 10 only
+        try:
+            distance = hamming_distance(source.phash, meme.phash)
+            score = similarity_score(distance)
+            results.append({
+                "id": meme.id,
+                "source_phash": source.phash,
+                "compare_phash": meme.phash,
+                "distance": distance,
+                "score": score
+            })
+        except Exception as e:
+            errors.append({
+                "id": meme.id,
+                "phash": meme.phash,
+                "error": str(e)
+            })
+
+    return {
+        "source_id": meme_id,
+        "source_phash": source.phash,
+        "comparisons": results,
+        "errors": errors
+    }
+
+
 # ---------------------------------------------------------------------------
 # Rehash endpoint
 # ---------------------------------------------------------------------------
