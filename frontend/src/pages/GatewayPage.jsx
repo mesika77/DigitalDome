@@ -15,7 +15,7 @@ export default function GatewayPage() {
   const fetchCount = useCallback(async () => {
     try {
       const data = await getDatabase();
-      setDbCount(data.length);
+      if (Array.isArray(data)) setDbCount(data.length);
     } catch { /* silent */ }
   }, []);
 

@@ -24,7 +24,7 @@ export default function AdminPage() {
   const fetchBatches = useCallback(async () => {
     try {
       const data = await getBatches();
-      setBatches(data);
+      if (Array.isArray(data)) setBatches(data);
     } catch { /* silent */ }
   }, []);
 
