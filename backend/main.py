@@ -365,6 +365,59 @@ def delete_batch(batch_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# Similar memes endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/similar/{meme_id}")
+async def get_similar_memes(
+    meme_id: int,
+    threshold: int = 40,
+    db: Session = Depends(get_db),
+):
+    source = db.query(FlaggedMeme).filter(FlaggedMeme.id == meme_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Meme not found")
+
+    if not source.phash:
+        raise HTTPException(status_code=400, detail="This meme has no pHash")
+
+    all_memes = db.query(FlaggedMeme).filter(FlaggedMeme.id != meme_id).all()
+
+    results = []
+    for meme in all_memes:
+        if not meme.phash:
+            continue
+        try:
+            distance = hamming_distance(source.phash, meme.phash)
+            score = similarity_score(distance)
+            results.append({
+                "id": meme.id,
+                "filename": meme.filename,
+                "thumbnail_url": meme.thumbnail_url,
+                "source": meme.source,
+                "community": meme.community,
+                "date_detected": str(meme.date_detected),
+                "phash": meme.phash,
+                "context": meme.context,
+                "similarity_score": score,
+                "hamming_distance": distance,
+            })
+        except Exception:
+            continue
+
+    results.sort(key=lambda x: x["similarity_score"], reverse=True)
+    filtered = [r for r in results if r["hamming_distance"] <= threshold]
+
+    return {
+        "source_id": meme_id,
+        "source_phash": source.phash,
+        "total_similar": len(filtered),
+        "results": filtered,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Check endpoint
 # ---------------------------------------------------------------------------
 

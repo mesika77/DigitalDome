@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { getDatabase, imageUrl, getImagePath } from "../api/client";
+import { getDatabase, getSimilarMemes, imageUrl, getImagePath } from "../api/client";
 
 const SEVERITY_LEVELS = ["high", "medium", "low", "none"];
 
@@ -116,6 +116,10 @@ export default function DashboardPage() {
   const [sortDir, setSortDir] = useState("desc");
   const [expandedId, setExpandedId] = useState(null);
 
+  const [similarResults, setSimilarResults] = useState(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarError, setSimilarError] = useState(null);
+
   const fetchData = useCallback(async () => {
     try {
       const data = await getDatabase();
@@ -222,6 +226,20 @@ export default function DashboardPage() {
     } else {
       setSortCol(col);
       setSortDir("asc");
+    }
+  };
+
+  const handleFindSimilar = async (meme) => {
+    setSimilarResults(null);
+    setSimilarError(null);
+    setSimilarLoading(true);
+    try {
+      const data = await getSimilarMemes(meme.id);
+      setSimilarResults(data);
+    } catch (err) {
+      setSimilarError("Failed to find similar memes");
+    } finally {
+      setSimilarLoading(false);
     }
   };
 
@@ -457,7 +475,10 @@ export default function DashboardPage() {
               {filtered.map((meme) => (
                 <div key={meme.id}>
                   <button
-                    onClick={() => setExpandedId(expandedId === meme.id ? null : meme.id)}
+                    onClick={() => {
+                      setExpandedId(expandedId === meme.id ? null : meme.id);
+                      setSimilarResults(null);
+                    }}
                     className="w-full grid grid-cols-[56px_90px_100px_1fr_1fr_100px_1fr] gap-2 px-4 py-2.5 items-center hover:bg-white/2 transition-colors text-left"
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/30 border border-white/5">
@@ -560,9 +581,97 @@ export default function DashboardPage() {
                               <span>Community: <span className="text-white/40">{meme.community}</span></span>
                               <span>Detected: <span className="text-white/40">{meme.date_detected}</span></span>
                               <span>ID: <span className="text-white/40 font-mono">{meme.id}</span></span>
+                              <button
+                                onClick={() => handleFindSimilar(meme)}
+                                disabled={similarLoading}
+                                className="px-3 py-1 text-xs rounded-full border border-purple-500/50
+                                           text-purple-400 hover:bg-purple-500/20 transition-colors
+                                           disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {similarLoading ? "Searching..." : "\uD83D\uDD0D Find Similar"}
+                              </button>
                             </div>
                           </div>
                         </div>
+
+                        {similarResults && similarResults.source_id === meme.id && (
+                          <div className="mt-4 border-t border-white/10 pt-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">
+                                Similar Memes in Database
+                              </span>
+                              <span className="text-xs text-white/40">
+                                {similarResults.total_similar} found
+                              </span>
+                            </div>
+
+                            {similarResults.total_similar === 0 ? (
+                              <p className="text-xs text-white/40 italic">
+                                No similar memes found in the database.
+                              </p>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                                {similarResults.results.map((result) => (
+                                  <div
+                                    key={result.id}
+                                    className="bg-white/5 rounded-xl border border-white/10
+                                               overflow-hidden hover:border-purple-500/40 transition-colors"
+                                  >
+                                    <div className="w-full h-24 bg-white/5 overflow-hidden">
+                                      <img
+                                        src={imageUrl(result.thumbnail_url)}
+                                        alt=""
+                                        onError={(e) => { e.target.style.display = "none" }}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </div>
+                                    <div className="p-2 space-y-1">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs text-white/40">Match</span>
+                                        <span className={`text-xs font-bold ${
+                                          result.similarity_score >= 80 ? "text-red-400" :
+                                          result.similarity_score >= 60 ? "text-orange-400" :
+                                          "text-yellow-400"
+                                        }`}>
+                                          {result.similarity_score}%
+                                        </span>
+                                      </div>
+                                      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${
+                                            result.similarity_score >= 80 ? "bg-red-500" :
+                                            result.similarity_score >= 60 ? "bg-orange-500" :
+                                            "bg-yellow-500"
+                                          }`}
+                                          style={{ width: `${result.similarity_score}%` }}
+                                        />
+                                      </div>
+                                      <p className="text-xs text-white/30">
+                                        Distance: {result.hamming_distance} bits
+                                      </p>
+                                      <p className="text-xs text-white/50 truncate">
+                                        {result.source || "Unknown source"}
+                                      </p>
+                                      {result.context?.severity && (
+                                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${
+                                          result.context.severity === "high" ? "bg-red-500/20 text-red-400" :
+                                          result.context.severity === "medium" ? "bg-orange-500/20 text-orange-400" :
+                                          "bg-yellow-500/20 text-yellow-400"
+                                        }`}>
+                                          {result.context.severity}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {similarError && (
+                              <p className="text-xs text-red-400 mt-2">{similarError}</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
