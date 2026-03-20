@@ -106,6 +106,7 @@ function BlockedCard({ result }) {
               <img
                 src={imageUrl(result.uploaded_image_url)}
                 alt="Uploaded"
+                onError={(e) => { e.target.style.display = 'none' }}
                 className="w-full aspect-square object-cover rounded-xl border border-white/10"
               />
             </div>
@@ -115,6 +116,7 @@ function BlockedCard({ result }) {
             <img
               src={imageUrl(result.match.thumbnail_url)}
               alt="Match"
+              onError={(e) => { e.target.style.display = 'none' }}
               className="w-full aspect-square object-cover rounded-xl border-2 border-red-500/30"
             />
           </div>

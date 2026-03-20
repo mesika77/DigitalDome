@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { getDatabase, imageUrl } from "../api/client";
+import { getDatabase, imageUrl, getImagePath } from "../api/client";
 
 const SEVERITY_LEVELS = ["high", "medium", "low", "none"];
 
@@ -462,8 +462,9 @@ export default function DashboardPage() {
                   >
                     <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/30 border border-white/5">
                       <img
-                        src={imageUrl(meme.thumbnail_url)}
+                        src={imageUrl(getImagePath(meme))}
                         alt=""
+                        onError={(e) => { e.target.style.display = 'none' }}
                         className="w-full h-full object-cover"
                       />
                     </div>
@@ -496,8 +497,9 @@ export default function DashboardPage() {
                         <div className="flex gap-5">
                           <div className="shrink-0">
                             <img
-                              src={imageUrl(meme.thumbnail_url)}
+                              src={imageUrl(getImagePath(meme))}
                               alt=""
+                              onError={(e) => { e.target.style.display = 'none' }}
                               className="w-40 h-40 rounded-xl object-cover border border-white/10"
                             />
                             <p className="text-[10px] text-white/20 font-mono mt-1.5 truncate max-w-[160px]">

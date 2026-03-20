@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { imageUrl } from "../api/client";
+import { imageUrl, getImagePath } from "../api/client";
 
 function SeverityBadge({ severity }) {
   if (!severity) {
@@ -91,8 +91,9 @@ function MemeCard({ meme, onDelete, compact = false }) {
       )}
       <div className="aspect-square overflow-hidden bg-black/30">
         <img
-          src={imageUrl(meme.thumbnail_url)}
+          src={imageUrl(getImagePath(meme))}
           alt={meme.filename}
+          onError={(e) => { e.target.style.display = 'none' }}
           className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
         />
       </div>
