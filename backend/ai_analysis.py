@@ -161,7 +161,7 @@ async def analyze_with_claude(filepath: str, cache_key: str | None = None) -> di
         image_data, media_type = _image_to_base64(filepath)
 
         message = client.messages.create(
-            model="claude-haiku-4",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             messages=[
@@ -306,7 +306,7 @@ async def generate_context_notes(filepath: str, cache_key: str | None = None) ->
         image_data, media_type = _image_to_base64(filepath)
 
         message = client.messages.create(
-            model="claude-haiku-4",
+            model="claude-haiku-4-5-20251001",
             max_tokens=512,
             messages=[
                 {
