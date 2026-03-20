@@ -3,8 +3,8 @@ from PIL import Image
 
 
 def compute_phash(filepath: str) -> str:
-    img = Image.open(filepath).convert("RGB")
-    return str(imagehash.phash(img))
+      img = Image.open(filepath).convert("RGB")
+      return str(imagehash.phash(img))
 
 
 def hamming_distance(hash1: str, hash2: str) -> int:
@@ -23,4 +23,4 @@ def hamming_distance(hash1: str, hash2: str) -> int:
 
 
 def similarity_score(distance: int) -> int:
-    return max(0, int((1 - distance / 64) * 100))
+      return max(0, int((1 - distance / 64) * 100))
