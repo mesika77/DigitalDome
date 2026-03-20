@@ -372,7 +372,7 @@ def delete_batch(batch_id: str, db: Session = Depends(get_db)):
 @app.get("/api/similar/{meme_id}")
 async def get_similar_memes(
     meme_id: int,
-    threshold: int = 40,
+    threshold: int = 64,
     db: Session = Depends(get_db),
 ):
     source = db.query(FlaggedMeme).filter(FlaggedMeme.id == meme_id).first()
