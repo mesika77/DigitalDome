@@ -76,6 +76,28 @@ Path(UPLOAD_DIR, "gateway").mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
+def _determine_status(distance: int, ai_recommendation: str, match_severity: str) -> str:
+    severity_is_serious = match_severity in ("high", "medium")
+
+    if distance <= 10:
+        if ai_recommendation == "block" and severity_is_serious:
+            return "blocked"
+        if ai_recommendation == "approve" and not severity_is_serious:
+            return "approved"
+        return "pending"
+
+    if distance <= 20:
+        if ai_recommendation == "block" and severity_is_serious:
+            return "blocked"
+        if ai_recommendation == "approve":
+            return "approved"
+        return "pending"
+
+    if ai_recommendation == "block":
+        return "pending"
+    return "approved"
+
+
 def _save_upload(file: UploadFile, subfolder: str) -> tuple[str, str]:
     ext = Path(file.filename).suffix or ".png"
     unique_name = f"{uuid.uuid4().hex}{ext}"
@@ -389,38 +411,15 @@ async def check_image_logic(file: UploadFile, db: Session) -> dict:
 
         score = similarity_score(best_distance)
 
-        if best_distance <= 10:
-            status = "blocked"
-            ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
-            ai_obj = AIAnalysisResult(**ai_result)
-            return CheckResult(
-                status=status,
-                similarity_score=score,
-                match=_meme_to_response(best_match),
-                ai_analysis=ai_obj,
-                ai_confidence=ai_result.get("confidence", 0),
-                uploaded_image_url=uploaded_image_url,
-            ).model_dump()
-
-        if best_distance <= 20:
-            status = "pending"
-            ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
-            ai_obj = AIAnalysisResult(**ai_result)
-            return CheckResult(
-                status=status,
-                similarity_score=score,
-                match=_meme_to_response(best_match),
-                ai_analysis=ai_obj,
-                ai_confidence=ai_result.get("confidence", 0),
-                uploaded_image_url=uploaded_image_url,
-            ).model_dump()
-
         ai_result = await analyze_with_claude(filepath, cache_key=uploaded_hash)
         ai_obj = AIAnalysisResult(**ai_result)
-        if ai_result.get("contains_hate_content") and ai_result.get("confidence", 0) > 75:
-            status = "pending"
-        else:
-            status = "approved"
+        ai_recommendation = ai_result.get("recommendation", "approve")
+
+        match_severity = "none"
+        if best_match and best_match.context and isinstance(best_match.context, dict):
+            match_severity = best_match.context.get("severity", "none").lower()
+
+        status = _determine_status(best_distance, ai_recommendation, match_severity)
 
         return CheckResult(
             status=status,
