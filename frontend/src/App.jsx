@@ -29,7 +29,7 @@ class ErrorBoundary extends Component {
               onClick={() => this.setState({ hasError: false })}
               className="inline-block px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white/70 transition-colors"
             >
-              Back to Gateway
+              Back to DB Input
             </Link>
           </div>
         </div>
@@ -62,8 +62,9 @@ export default function App() {
           }}
         />
         <Routes>
-          <Route path="/" element={<GatewayPage />} />
+          <Route path="/" element={<AdminPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/gateway" element={<GatewayPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
         </Routes>
       </ErrorBoundary>

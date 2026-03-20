@@ -95,7 +95,7 @@ export default function GatewayPage() {
               Dashboard
             </Link>
             <Link
-              to="/admin"
+              to="/"
               className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/40 hover:text-white/60 transition-colors"
             >
               DB Input
