@@ -395,7 +395,7 @@ async def get_similar_memes(
             results.append({
                 "id": meme.id,
                 "filename": meme.filename,
-                "thumbnail_url": meme.thumbnail_url,
+                "thumbnail_url": f"/uploads/source/{meme.filename}",
                 "source": meme.source,
                 "community": meme.community,
                 "date_detected": str(meme.date_detected),
