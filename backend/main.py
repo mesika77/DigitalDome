@@ -9,6 +9,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, Sec
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
@@ -28,6 +29,7 @@ load_dotenv()
 
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 MIN_MATCH_SIMILARITY = 85
+FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 app = FastAPI(
     title="DigitalDome Threat Intelligence API",
@@ -655,3 +657,34 @@ async def check_image_v1(
     result = await check_image_logic(file, db)
     result["client"] = client
     return result
+
+
+def _serve_frontend_path(path: str):
+    if path.startswith(("api/", "uploads/", "api", "uploads")):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    index_path = FRONTEND_DIST_DIR / "index.html"
+    if not index_path.exists():
+        if not path:
+            return {
+                "platform": "DigitalDome Threat Intelligence API",
+                "status": "operational",
+                "docs": "/api/docs",
+            }
+        raise HTTPException(status_code=404, detail="Frontend build not found")
+
+    requested_path = (FRONTEND_DIST_DIR / path).resolve()
+    if requested_path.is_file() and requested_path.is_relative_to(FRONTEND_DIST_DIR):
+        return FileResponse(requested_path)
+
+    return FileResponse(index_path)
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend_root():
+    return _serve_frontend_path("")
+
+
+@app.get("/{path:path}", include_in_schema=False)
+async def serve_frontend_route(path: str):
+    return _serve_frontend_path(path)
