@@ -1,268 +1,220 @@
+import { createElement } from "react";
+import { AlertOctagon, CheckCircle2, Clock3, FileText, ShieldAlert } from "lucide-react";
 import { imageUrl } from "../api/client";
+import { Badge, InlineAlert, Panel, PanelHeader, StatusBadge } from "./ui";
+import { cx } from "./uiConfig";
 
-function SeverityBadge({ severity }) {
-  const config = {
-    high: "bg-red-500/15 text-red-400 ring-red-500/20",
-    medium: "bg-orange-500/15 text-orange-400 ring-orange-500/20",
-    low: "bg-yellow-500/15 text-yellow-400 ring-yellow-500/20",
-  };
-  const classes = config[severity] || "bg-white/10 text-white/40 ring-white/10";
-  return (
-    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ring-1 ${classes}`}>
-      {severity || "unknown"}
-    </span>
-  );
-}
-
-function ContextCard({ context, borderColor = "border-red-500/20" }) {
+function ContextCard({ context }) {
   if (!context) return null;
+  const rows = [
+    ["What it depicts", context.what_it_depicts],
+    ["Why harmful", context.why_harmful],
+    ["Target group", context.target_group],
+    ["Origin community", context.origin_community],
+  ].filter(([, value]) => value);
+
   return (
-    <div className={`mt-4 rounded-xl bg-black/30 border ${borderColor} p-4`}>
-      <p className="text-[11px] text-white/50 uppercase tracking-wider font-bold mb-3">
-        Why This Was Flagged
-      </p>
-      <div className="h-px bg-white/10 mb-3" />
-      <div className="space-y-2 text-sm">
-        <div className="flex gap-2">
-          <span className="text-white/30 shrink-0 w-28">What it depicts</span>
-          <span className="text-white/70">{context.what_it_depicts}</span>
-        </div>
-        <div className="flex gap-2">
-          <span className="text-white/30 shrink-0 w-28">Why harmful</span>
-          <span className="text-white/70">{context.why_harmful}</span>
-        </div>
-        <div className="flex gap-2">
-          <span className="text-white/30 shrink-0 w-28">Target group</span>
-          <span className="text-white/70">{context.target_group}</span>
-        </div>
-        <div className="flex gap-2 items-center">
-          <span className="text-white/30 shrink-0 w-28">Severity</span>
-          <SeverityBadge severity={context.severity} />
-        </div>
-        <div className="flex gap-2">
-          <span className="text-white/30 shrink-0 w-28">Coded elements</span>
-          <span className="text-white/70">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Evidence context</p>
+        <StatusBadge value={context.severity} />
+      </div>
+      <div className="space-y-3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="grid gap-1 sm:grid-cols-[140px_1fr]">
+            <p className="text-xs font-bold text-slate-500">{label}</p>
+            <p className="text-sm leading-relaxed text-slate-700">{value}</p>
+          </div>
+        ))}
+        <div className="grid gap-1 sm:grid-cols-[140px_1fr]">
+          <p className="text-xs font-bold text-slate-500">Coded elements</p>
+          <div className="flex flex-wrap gap-1.5">
             {Array.isArray(context.coded_elements) && context.coded_elements.length > 0
-              ? context.coded_elements.join(", ")
-              : "None identified"}
-          </span>
-        </div>
-        <div className="flex gap-2">
-          <span className="text-white/30 shrink-0 w-28">Origin</span>
-          <span className="text-white/70">{context.origin_community}</span>
+              ? context.coded_elements.map((element, index) => <Badge key={`${element}-${index}`}>{element}</Badge>)
+              : <span className="text-sm text-slate-500">None identified</span>}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function SimilarityBar({ score, label = "Similarity", color }) {
-  const barColor = score >= 80 ? "bg-red-500" : score >= 50 ? "bg-amber-500" : "bg-emerald-500";
+function SimilarityBar({ score = 0, label = "Similarity" }) {
+  const barColor = score >= 80 ? "bg-red-600" : score >= 50 ? "bg-amber-500" : "bg-emerald-500";
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between text-xs mb-1.5">
-        <span className="text-white/40 font-medium">{label}</span>
-        <span className={`font-bold text-sm ${color}`}>{score}%</span>
+    <div>
+      <div className="mb-1.5 flex items-center justify-between text-xs">
+        <span className="font-bold text-slate-500">{label}</span>
+        <span className="text-sm font-black text-slate-950">{score}%</span>
       </div>
-      <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
-        <div
-          className={`h-full rounded-full animate-bar-fill ${barColor}`}
-          style={{ width: `${score}%` }}
+      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+        <div className={cx("h-full rounded-full animate-bar-fill", barColor)} style={{ width: `${score}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function AIAnalysis({ result }) {
+  const analysis = result.ai_analysis?.analysis;
+  if (!analysis || analysis === "AI analysis unavailable - falling back to hash-only matching." || analysis === "AI analysis unavailable — falling back to hash-only matching.") {
+    return null;
+  }
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+        <FileText className="h-4 w-4" aria-hidden="true" />
+        AI analysis
+      </div>
+      <p className="text-sm leading-relaxed text-slate-700">{analysis}</p>
+    </div>
+  );
+}
+
+function MatchComparison({ result }) {
+  if (!result.match) return null;
+  return (
+    <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+      {result.uploaded_image_url && (
+        <div>
+          <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Uploaded image</p>
+          <img
+            src={imageUrl(result.uploaded_image_url)}
+            alt="Uploaded content"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+            className="aspect-square w-full rounded-lg border border-slate-200 bg-white object-cover"
+          />
+        </div>
+      )}
+      <div>
+        <p className="mb-2 text-xs font-black uppercase tracking-[0.14em] text-slate-500">Database match</p>
+        <img
+          src={imageUrl(result.match.thumbnail_url)}
+          alt="Database match"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+          className="aspect-square w-full rounded-lg border border-red-200 bg-white object-cover"
         />
       </div>
     </div>
   );
 }
 
-function BlockedCard({ result }) {
-  const hasDbMatch = !!result.match;
+function ResultShell({ result, tone, icon: Icon, title, subtitle, footer }) {
   const contextData = result.match?.context || result.ai_context;
+  const tones = {
+    blocked: {
+      header: "border-red-200 bg-red-50 text-red-700",
+      panel: "border-red-200",
+      action: "red",
+    },
+    pending: {
+      header: "border-amber-200 bg-amber-50 text-amber-700",
+      panel: "border-amber-200",
+      action: "amber",
+    },
+    approved: {
+      header: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      panel: "border-emerald-200",
+      action: "emerald",
+    },
+  };
+  const selected = tones[tone];
 
   return (
-    <div className="rounded-2xl border border-red-500/20 bg-linear-to-b from-red-500/10 to-red-950/20 p-6 animate-fade-in-up animate-pulse-glow">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-11 h-11 rounded-full bg-red-500/15 flex items-center justify-center ring-2 ring-red-500/20">
-          <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-          </svg>
-        </div>
-        <div>
-          <h3 className="text-base font-bold text-red-400 tracking-tight">
-            Upload Blocked
-          </h3>
-          <p className="text-sm text-white/40 mt-0.5">
-            {hasDbMatch
-              ? "This content was detected in our radical community database."
-              : "AI analysis detected harmful content in this upload."}
-          </p>
-        </div>
-      </div>
+    <Panel className={cx("overflow-hidden", selected.panel)}>
+      <PanelHeader
+        eyebrow="Scan decision"
+        title={title}
+        className={selected.header}
+        action={createElement(Icon, { className: "h-6 w-6", "aria-hidden": "true" })}
+      >
+        {subtitle}
+      </PanelHeader>
+      <div className="space-y-4 p-4">
+        <MatchComparison result={result} />
 
-      {hasDbMatch && (
-        <div className="grid grid-cols-2 gap-3 my-4 p-3 rounded-xl bg-black/30 border border-white/5">
-          {result.uploaded_image_url && (
+        {result.match && (
+          <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-3">
             <div>
-              <p className="text-[10px] text-white/30 mb-1.5 uppercase tracking-wider font-semibold">Your Upload</p>
-              <img
-                src={imageUrl(result.uploaded_image_url)}
-                alt="Uploaded"
-                onError={(e) => { e.target.style.display = 'none' }}
-                className="w-full aspect-square object-cover rounded-xl border border-white/10"
-              />
-            </div>
-          )}
-          <div>
-            <p className="text-[10px] text-white/30 mb-1.5 uppercase tracking-wider font-semibold">Database Match</p>
-            <img
-              src={imageUrl(result.match.thumbnail_url)}
-              alt="Match"
-              onError={(e) => { e.target.style.display = 'none' }}
-              className="w-full aspect-square object-cover rounded-xl border-2 border-red-500/30"
-            />
-          </div>
-        </div>
-      )}
-
-      {hasDbMatch && (
-        <div className="rounded-xl bg-black/20 border border-white/5 p-3 mb-4">
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <p className="text-[10px] text-white/30 uppercase mb-0.5">Source</p>
-              <p className="text-xs text-red-300 font-semibold">{result.match.source}</p>
+              <p className="text-xs font-bold text-slate-500">Source</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{result.match.source || "Unknown"}</p>
             </div>
             <div>
-              <p className="text-[10px] text-white/30 uppercase mb-0.5">Community</p>
-              <p className="text-xs text-white/60 font-medium">{result.match.community}</p>
+              <p className="text-xs font-bold text-slate-500">Community</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{result.match.community || "Unclassified"}</p>
             </div>
             <div>
-              <p className="text-[10px] text-white/30 uppercase mb-0.5">Detected</p>
-              <p className="text-xs text-white/60 font-medium">{result.match.date_detected}</p>
+              <p className="text-xs font-bold text-slate-500">Detected</p>
+              <p className="mt-1 text-sm font-bold text-slate-900">{result.match.date_detected || "Unknown"}</p>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {hasDbMatch && (
-        <SimilarityBar score={result.similarity_score} color="text-red-400" />
-      )}
+        {result.match && <SimilarityBar score={result.similarity_score} label="Database similarity" />}
+        {tone === "approved" && <SimilarityBar score={Math.max(0, 100 - (result.ai_confidence || 0))} label="Risk level" />}
 
-      {contextData && (
-        <ContextCard context={contextData} borderColor="border-red-500/20" />
-      )}
-
-      {result.ai_analysis?.analysis && result.ai_analysis.analysis !== "AI analysis unavailable \u2014 falling back to hash-only matching." && (
-        <div className="mt-4 rounded-xl bg-black/20 border border-white/5 p-3">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider font-semibold mb-1.5">AI Analysis</p>
-          <p className="text-sm text-white/60 leading-relaxed">{result.ai_analysis.analysis}</p>
-        </div>
-      )}
-
-      <div className="mt-4 flex items-center gap-2 py-2.5 px-3 rounded-xl bg-red-500/10 border border-red-500/20">
-        <svg className="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-        </svg>
-        <p className="text-sm text-red-300 font-medium">This content will not be published.</p>
+        <ContextCard context={contextData} />
+        <AIAnalysis result={result} />
+        <InlineAlert tone={selected.action} icon={tone === "approved" ? CheckCircle2 : tone === "pending" ? Clock3 : ShieldAlert}>
+          {footer}
+        </InlineAlert>
       </div>
-    </div>
+    </Panel>
+  );
+}
+
+function BlockedCard({ result }) {
+  return (
+    <ResultShell
+      result={result}
+      tone="blocked"
+      icon={AlertOctagon}
+      title="Upload blocked"
+      subtitle={result.match ? "The upload matches flagged evidence and will not be cleared." : "AI analysis detected harmful content in this upload."}
+      footer="This content is not cleared for publishing."
+    />
   );
 }
 
 function PendingCard({ result }) {
-  const hasDbMatch = !!result.match;
-  const contextData = result.match?.context || result.ai_context;
-
   return (
-    <div className="rounded-2xl border border-amber-500/20 bg-linear-to-b from-amber-500/10 to-amber-950/20 p-6 animate-fade-in-up">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-11 h-11 rounded-full bg-amber-500/15 flex items-center justify-center ring-2 ring-amber-500/20">
-          <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <div>
-          <h3 className="text-base font-bold text-amber-400 tracking-tight">
-            Held for Manual Review
-          </h3>
-          <p className="text-sm text-white/40 mt-0.5">
-            {hasDbMatch
-              ? "This content shows similarity to flagged material."
-              : "AI analysis flagged this content for review."}
-          </p>
-        </div>
-      </div>
-
-      {hasDbMatch && (
-        <SimilarityBar score={result.similarity_score} label="Match Score" color="text-amber-400" />
-      )}
-
-      {contextData && (
-        <ContextCard context={contextData} borderColor="border-amber-500/20" />
-      )}
-
-      {result.ai_analysis?.analysis && result.ai_analysis.analysis !== "AI analysis unavailable \u2014 falling back to hash-only matching." && (
-        <div className="mt-4 rounded-xl bg-black/20 border border-white/5 p-3">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider font-semibold mb-1.5">AI Analysis</p>
-          <p className="text-sm text-white/60 leading-relaxed">{result.ai_analysis.analysis}</p>
-        </div>
-      )}
-
-      <div className="mt-4 flex items-center gap-3 py-3 px-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-        <div className="shrink-0 relative">
-          <div className="h-5 w-5 rounded-full border-2 border-amber-500/30 border-t-amber-400 animate-spin" />
-        </div>
-        <div>
-          <p className="text-sm text-amber-300 font-medium">Sending to review queue...</p>
-          <p className="text-xs text-amber-300/40 mt-0.5">A moderator will review this before publishing.</p>
-        </div>
-      </div>
-    </div>
+    <ResultShell
+      result={result}
+      tone="pending"
+      icon={Clock3}
+      title="Held for review"
+      subtitle={result.match ? "The upload resembles flagged material and needs analyst review." : "AI analysis flagged this upload for review."}
+      footer="A reviewer should inspect this item before any publishing decision."
+    />
   );
 }
 
 function ApprovedCard({ result }) {
   return (
-    <div className="rounded-2xl border border-emerald-500/20 bg-linear-to-b from-emerald-500/10 to-emerald-950/20 p-6 animate-fade-in-up">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="shrink-0 w-11 h-11 rounded-full bg-emerald-500/15 flex items-center justify-center ring-2 ring-emerald-500/20">
-          <svg className="w-6 h-6 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 13l4 4L19 7" className="animate-checkmark" />
-          </svg>
-        </div>
-        <div>
-          <h3 className="text-base font-bold text-emerald-400 tracking-tight">
-            Upload Approved
-          </h3>
-          <p className="text-sm text-white/40 mt-0.5">
-            No matches found in the radical content database.
-          </p>
-        </div>
-      </div>
-
-      <SimilarityBar score={100 - (result.ai_confidence || 0)} label="Risk Level" color="text-emerald-400" />
-
-      {result.ai_analysis?.analysis && result.ai_analysis.analysis !== "AI analysis unavailable \u2014 falling back to hash-only matching." && (
-        <div className="mt-4 rounded-xl bg-black/20 border border-white/5 p-3">
-          <p className="text-[10px] text-white/30 uppercase tracking-wider font-semibold mb-1.5">AI Analysis</p>
-          <p className="text-sm text-white/60 leading-relaxed">{result.ai_analysis.analysis}</p>
-        </div>
-      )}
-
-      <div className="mt-4 flex items-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-        <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-        <p className="text-sm text-emerald-300 font-medium">Content cleared for publishing.</p>
-      </div>
-    </div>
+    <ResultShell
+      result={result}
+      tone="approved"
+      icon={CheckCircle2}
+      title="Upload approved"
+      subtitle="No blocking database match or AI risk signal was returned."
+      footer="Content is cleared by the current scan policy."
+    />
   );
 }
 
 export default function ResultCard({ result }) {
   if (!result) return null;
   switch (result.status) {
-    case "blocked": return <BlockedCard result={result} />;
-    case "pending": return <PendingCard result={result} />;
-    case "approved": return <ApprovedCard result={result} />;
-    default: return null;
+    case "blocked":
+      return <BlockedCard result={result} />;
+    case "pending":
+      return <PendingCard result={result} />;
+    case "approved":
+      return <ApprovedCard result={result} />;
+    default:
+      return null;
   }
 }

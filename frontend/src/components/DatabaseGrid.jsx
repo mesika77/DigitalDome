@@ -1,44 +1,19 @@
 import { useState } from "react";
+import { ChevronDown, Database, Layers, Trash2, X } from "lucide-react";
 import { imageUrl, getImagePath } from "../api/client";
+import { Button, EmptyState, Panel, PanelHeader, StatusBadge } from "./ui";
+import { cx, platformStyles } from "./uiConfig";
 
 function SeverityBadge({ severity }) {
-  if (!severity) {
-    return (
-      <span className="inline-flex items-center rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-white/30 ring-1 ring-white/10">
-        Analyzing…
-      </span>
-    );
-  }
-  const config = {
-    high: "bg-red-500/10 text-red-400 ring-red-500/15",
-    medium: "bg-orange-500/10 text-orange-400 ring-orange-500/15",
-    low: "bg-yellow-500/10 text-yellow-400 ring-yellow-500/15",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${config[severity] || "bg-white/5 text-white/40 ring-white/10"}`}>
-      {severity}
-    </span>
-  );
+  return <StatusBadge value={severity || "analyzing"} />;
 }
 
 function PlatformBadge({ platform }) {
   if (!platform || platform === "Unknown") return null;
-  const colors = {
-    Reddit: "bg-orange-500/10 text-orange-400 ring-orange-500/15",
-    "4chan": "bg-green-500/10 text-green-400 ring-green-500/15",
-    Telegram: "bg-blue-500/10 text-blue-400 ring-blue-500/15",
-    "Twitter/X": "bg-sky-500/10 text-sky-400 ring-sky-500/15",
-    Discord: "bg-indigo-500/10 text-indigo-400 ring-indigo-500/15",
-    Gab: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/15",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${colors[platform] || "bg-white/5 text-white/40 ring-white/10"}`}>
-      {platform}
-    </span>
-  );
+  return <StatusBadge value={platform} map={platformStyles} />;
 }
 
-function MemeCard({ meme, onDelete, compact = false }) {
+function MemeCard({ meme, onDelete }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -57,57 +32,45 @@ function MemeCard({ meme, onDelete, compact = false }) {
   };
 
   return (
-    <div className="group relative rounded-xl border border-white/5 bg-white/1.5 hover:bg-white/3 transition-all duration-200 overflow-hidden hover:border-white/10">
-      {onDelete && (
-        <div className={`absolute top-1.5 right-1.5 z-10 flex items-center gap-1 transition-opacity ${confirming ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-          {confirming && (
-            <button
-              onClick={() => setConfirming(false)}
-              className="rounded-md bg-black/60 backdrop-blur-sm p-1 text-white/50 hover:text-white/80 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className={`rounded-md backdrop-blur-sm p-1 transition-colors ${
-              confirming
-                ? "bg-red-600/80 text-white hover:bg-red-500"
-                : "bg-black/60 text-white/50 hover:text-red-400"
-            } disabled:opacity-50`}
-          >
-            {deleting ? (
-              <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-            ) : (
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            )}
-          </button>
-        </div>
-      )}
-      <div className="aspect-square overflow-hidden bg-black/30">
+    <div className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md">
+      <div className="relative aspect-square overflow-hidden bg-slate-100">
         <img
           src={imageUrl(getImagePath(meme))}
-          alt={meme.filename}
-          onError={(e) => { e.target.style.display = 'none' }}
-          className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+          alt={meme.filename || "Flagged content"}
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
         />
+        {onDelete && (
+          <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+            {confirming && (
+              <Button type="button" variant="secondary" size="icon" onClick={() => setConfirming(false)} aria-label="Cancel delete">
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant={confirming ? "danger" : "secondary"}
+              size="icon"
+              onClick={handleDelete}
+              disabled={deleting}
+              aria-label={confirming ? "Confirm delete image" : "Delete image"}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
       </div>
-      <div className="p-2">
-        <div className="flex items-center gap-1 mb-1 flex-wrap">
+      <div className="space-y-2 p-2.5">
+        <div className="flex flex-wrap gap-1">
           <SeverityBadge severity={meme.context?.severity} />
           <PlatformBadge platform={meme.platform} />
         </div>
-        {meme.original_poster && meme.original_poster !== "Unknown" && (
-          <p className="text-[10px] text-white/40 truncate">{meme.original_poster}</p>
-        )}
-        <p className="text-[10px] text-white/20 font-mono truncate mt-0.5">
-          {meme.phash?.slice(0, 12)}
-        </p>
+        <div>
+          <p className="truncate text-xs font-bold text-slate-700">{meme.original_poster && meme.original_poster !== "Unknown" ? meme.original_poster : "Unknown poster"}</p>
+          <p className="mt-0.5 truncate font-mono text-[10px] text-slate-400">{meme.phash?.slice(0, 14) || "hash pending"}</p>
+        </div>
       </div>
     </div>
   );
@@ -117,14 +80,15 @@ function BatchCard({ batch, onDelete, onDeleteBatch }) {
   const [collapsed, setCollapsed] = useState(false);
   const [confirmingBatch, setConfirmingBatch] = useState(false);
   const [deletingBatch, setDeletingBatch] = useState(false);
-  const ts = new Date(batch.created_at);
-  const timeStr = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const createdAt = new Date(batch.created_at);
+  const timeStr = `${createdAt.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${createdAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
 
-  const platforms = [...new Set(batch.memes.map((m) => m.platform).filter(Boolean))];
-  const posters = [...new Set(batch.memes.map((m) => m.original_poster).filter((p) => p && p !== "Unknown"))];
+  const memes = batch.memes || [];
+  const platforms = [...new Set(memes.map((meme) => meme.platform).filter(Boolean))];
+  const posters = [...new Set(memes.map((meme) => meme.original_poster).filter((poster) => poster && poster !== "Unknown"))];
 
-  const handleDeleteBatch = async (e) => {
-    e.stopPropagation();
+  const handleDeleteBatch = async (event) => {
+    event.stopPropagation();
     if (!confirmingBatch) {
       setConfirmingBatch(true);
       return;
@@ -138,92 +102,74 @@ function BatchCard({ batch, onDelete, onDeleteBatch }) {
     }
   };
 
-  const cancelConfirm = (e) => {
-    e.stopPropagation();
-    setConfirmingBatch(false);
-  };
-
   return (
-    <div className="group/batch rounded-2xl border border-white/5 bg-white/1.5 overflow-hidden">
-      <div className="flex items-center">
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center border-b border-slate-100 bg-slate-50/70">
         <button
+          type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="flex-1 min-w-0 px-4 py-3 flex items-center gap-3 hover:bg-white/3 transition-colors text-left"
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-100"
         >
-          <div className="shrink-0 w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center ring-1 ring-red-500/15">
-            <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {platforms.map((p) => (
-                <PlatformBadge key={p} platform={p} />
-              ))}
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-sky-700 shadow-sm">
+            <Layers className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-1.5">
+              {platforms.length > 0 ? platforms.map((platform) => <PlatformBadge key={platform} platform={platform} />) : <span className="text-xs font-semibold text-slate-500">Unclassified source</span>}
               {posters.length > 0 && (
-                <span className="text-xs text-white/40 truncate">
+                <span className="truncate text-xs font-semibold text-slate-500">
                   {posters.length <= 2 ? posters.join(", ") : `${posters.length} accounts`}
                 </span>
               )}
-            </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[10px] text-white/20">{timeStr}</span>
-              <span className="text-[10px] text-white/20">&middot;</span>
-              <span className="text-[10px] text-white/30 font-medium">{batch.memes.length} image{batch.memes.length !== 1 ? "s" : ""}</span>
-            </div>
-          </div>
-          <svg className={`w-4 h-4 text-white/20 shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+            </span>
+            <span className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+              <span>{timeStr}</span>
+              <span aria-hidden="true">/</span>
+              <span className="font-bold text-slate-700">{memes.length} image{memes.length !== 1 ? "s" : ""}</span>
+            </span>
+          </span>
+          <ChevronDown className={cx("h-4 w-4 shrink-0 text-slate-400 transition", collapsed ? "-rotate-90" : "rotate-0")} aria-hidden="true" />
         </button>
 
         {onDeleteBatch && (
-          <div className={`flex items-center gap-1 pr-3 transition-opacity ${confirmingBatch ? "opacity-100" : "opacity-0 group-hover/batch:opacity-100"}`}>
+          <div className="flex items-center gap-1 pr-3">
             {confirmingBatch && (
-              <button
-                onClick={cancelConfirm}
-                className="rounded-md bg-black/60 backdrop-blur-sm p-1.5 text-white/50 hover:text-white/80 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <Button type="button" variant="secondary" size="icon" onClick={(event) => {
+                event.stopPropagation();
+                setConfirmingBatch(false);
+              }} aria-label="Cancel batch delete">
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
             )}
-            <button
+            <Button
+              type="button"
+              variant={confirmingBatch ? "danger" : "ghost"}
+              size="icon"
               onClick={handleDeleteBatch}
               disabled={deletingBatch}
-              className={`rounded-md backdrop-blur-sm p-1.5 transition-colors ${
-                confirmingBatch
-                  ? "bg-red-600/80 text-white hover:bg-red-500"
-                  : "bg-black/40 text-white/40 hover:text-red-400"
-              } disabled:opacity-50`}
+              aria-label={confirmingBatch ? "Confirm delete batch" : "Delete batch"}
             >
-              {deletingBatch ? (
-                <div className="w-3.5 h-3.5 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              )}
-            </button>
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
           </div>
         )}
       </div>
 
       {!collapsed && (
-        <div className="px-4 pb-3">
+        <div className="p-4">
           {batch.analyst_notes && (
-            <p className="text-[11px] text-white/30 italic mb-2 px-1">{batch.analyst_notes}</p>
+            <p className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+              {batch.analyst_notes}
+            </p>
           )}
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {batch.memes.map((meme) => (
-              <MemeCard key={meme.id} meme={meme} onDelete={onDelete} compact />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+            {memes.map((meme) => (
+              <MemeCard key={meme.id} meme={meme} onDelete={onDelete} />
             ))}
           </div>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -233,46 +179,40 @@ export default function DatabaseGrid({ batches, memes, onDelete, onDeleteBatch }
 
   if (!hasBatches && !hasLegacyMemes) {
     return (
-      <div className="rounded-2xl border border-white/5 bg-white/1.5 p-12 text-center">
-        <div className="mx-auto w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
-          <svg className="h-7 w-7 text-white/15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-          </svg>
-        </div>
-        <p className="text-sm text-white/30 font-medium">No intelligence uploaded yet</p>
-        <p className="text-xs text-white/15 mt-1">Upload a batch to start building the threat database.</p>
-      </div>
+      <Panel>
+        <EmptyState
+          icon={Database}
+          title="No flagged content uploaded"
+          description="Ingest a batch to begin building the evidence database."
+        />
+      </Panel>
     );
   }
 
   const totalImages = hasBatches
-    ? batches.reduce((sum, b) => sum + (b.memes?.length || 0), 0)
+    ? batches.reduce((sum, batch) => sum + (batch.memes?.length || 0), 0)
     : memes?.length || 0;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-white/30">
-          Intelligence Database
-        </h3>
-        <span className="text-xs text-white/20 font-medium">
-          {hasBatches ? `${batches.length} batches` : ""}{hasBatches && totalImages > 0 ? " · " : ""}{totalImages} images
-        </span>
-      </div>
+    <Panel className="overflow-hidden">
+      <PanelHeader
+        eyebrow="Database"
+        title="Recent ingestion batches"
+        action={<span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{hasBatches ? `${batches.length} batches / ` : ""}{totalImages} images</span>}
+      />
 
-      <div className="space-y-3 max-h-[calc(100vh-160px)] overflow-y-auto pr-1">
+      <div className="max-h-[calc(100vh-230px)] space-y-3 overflow-y-auto p-4">
         {hasBatches && batches.map((batch) => (
           <BatchCard key={batch.id} batch={batch} onDelete={onDelete} onDeleteBatch={onDeleteBatch} />
         ))}
         {hasLegacyMemes && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {memes.map((meme) => (
               <MemeCard key={meme.id} meme={meme} onDelete={onDelete} />
             ))}
           </div>
         )}
       </div>
-    </div>
+    </Panel>
   );
 }

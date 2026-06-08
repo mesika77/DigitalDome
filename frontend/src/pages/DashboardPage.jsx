@@ -1,53 +1,20 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, CalendarDays, Download, FilterX, Image, Search, ShieldAlert, Sparkles } from "lucide-react";
+import AppShell from "../components/AppShell";
 import { getDatabase, getSimilarMemes, imageUrl, getImagePath } from "../api/client";
+import {
+  Button,
+  EmptyState,
+  FieldLabel,
+  Panel,
+  PanelHeader,
+  Spinner,
+  StatTile,
+  StatusBadge,
+} from "../components/ui";
+import { cx, inputClass, platformStyles } from "../components/uiConfig";
 
 const SEVERITY_LEVELS = ["high", "medium", "low", "none"];
-
-const SEVERITY_STYLES = {
-  high: "bg-red-500/10 text-red-400 ring-red-500/15",
-  medium: "bg-orange-500/10 text-orange-400 ring-orange-500/15",
-  low: "bg-yellow-500/10 text-yellow-400 ring-yellow-500/15",
-  none: "bg-white/5 text-white/40 ring-white/10",
-};
-
-const PLATFORM_COLORS = {
-  Reddit: "bg-orange-500/10 text-orange-400 ring-orange-500/15",
-  "4chan": "bg-green-500/10 text-green-400 ring-green-500/15",
-  Telegram: "bg-blue-500/10 text-blue-400 ring-blue-500/15",
-  "Twitter/X": "bg-sky-500/10 text-sky-400 ring-sky-500/15",
-  Discord: "bg-indigo-500/10 text-indigo-400 ring-indigo-500/15",
-  Gab: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/15",
-};
-
-function Badge({ label, colorClass }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ring-1 ${colorClass}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function SortIcon({ active, direction }) {
-  if (!active)
-    return (
-      <svg className="w-3 h-3 text-white/15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-      </svg>
-    );
-  return (
-    <svg className="w-3 h-3 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d={direction === "asc" ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"}
-      />
-    </svg>
-  );
-}
 
 function exportCSV(memes) {
   const headers = [
@@ -55,34 +22,34 @@ function exportCSV(memes) {
     "Target Group", "Date Detected", "Description", "Why Harmful",
     "Coded Elements", "Origin Community", "pHash",
   ];
-  const escape = (v) => {
-    const s = String(v ?? "");
-    return s.includes(",") || s.includes('"') || s.includes("\n")
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
+  const escape = (value) => {
+    const stringValue = String(value ?? "");
+    return stringValue.includes(",") || stringValue.includes('"') || stringValue.includes("\n")
+      ? `"${stringValue.replace(/"/g, '""')}"`
+      : stringValue;
   };
-  const rows = memes.map((m) => [
-    m.id,
-    m.context?.severity ?? "",
-    m.platform ?? "",
-    m.original_poster ?? "",
-    m.source_url ?? "",
-    m.community ?? "",
-    m.context?.target_group ?? "",
-    m.date_detected ?? "",
-    m.context?.what_it_depicts ?? "",
-    m.context?.why_harmful ?? "",
-    (m.context?.coded_elements ?? []).join("; "),
-    m.context?.origin_community ?? "",
-    m.phash ?? "",
+  const rows = memes.map((meme) => [
+    meme.id,
+    meme.context?.severity ?? "",
+    meme.platform ?? "",
+    meme.original_poster ?? "",
+    meme.source_url ?? "",
+    meme.community ?? "",
+    meme.context?.target_group ?? "",
+    meme.date_detected ?? "",
+    meme.context?.what_it_depicts ?? "",
+    meme.context?.why_harmful ?? "",
+    (meme.context?.coded_elements ?? []).join("; "),
+    meme.context?.origin_community ?? "",
+    meme.phash ?? "",
   ]);
-  const csv = [headers.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");
+  const csv = [headers.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `digitaldome_export_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `digitaldome_export_${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.click();
   URL.revokeObjectURL(url);
 }
 
@@ -99,23 +66,45 @@ function matchesSearch(meme, query) {
     meme.context?.why_harmful,
     ...(meme.context?.coded_elements ?? []),
   ];
-  return fields.some((f) => f && String(f).toLowerCase().includes(q));
+  return fields.some((field) => field && String(field).toLowerCase().includes(q));
+}
+
+function SortButton({ column, activeColumn, direction, onSort, children }) {
+  const active = column === activeColumn;
+  const Icon = direction === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className="inline-flex items-center gap-1 text-left text-[11px] font-black uppercase tracking-[0.12em] text-slate-500 transition hover:text-slate-900"
+    >
+      {children}
+      {createElement(Icon, { className: cx("h-3.5 w-3.5", active ? "text-sky-700" : "text-slate-300"), "aria-hidden": "true" })}
+    </button>
+  );
+}
+
+function ContextRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div>
+      <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</p>
+      <p className="mt-1 text-sm leading-relaxed text-slate-700">{value}</p>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
   const [memes, setMemes] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [search, setSearch] = useState("");
   const [severityFilter, setSeverityFilter] = useState([]);
   const [platformFilter, setPlatformFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-
   const [sortCol, setSortCol] = useState("date_detected");
   const [sortDir, setSortDir] = useState("desc");
   const [expandedId, setExpandedId] = useState(null);
-
   const [similarResults, setSimilarResults] = useState(null);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [similarError, setSimilarError] = useState(null);
@@ -125,7 +114,7 @@ export default function DashboardPage() {
       const data = await getDatabase();
       if (Array.isArray(data)) setMemes(data);
     } catch {
-      /* silent */
+      /* keep current data visible */
     } finally {
       setLoading(false);
     }
@@ -138,27 +127,21 @@ export default function DashboardPage() {
   }, [fetchData]);
 
   const platforms = useMemo(
-    () => [...new Set(memes.map((m) => m.platform).filter((p) => p && p !== "Unknown"))].sort(),
+    () => [...new Set(memes.map((meme) => meme.platform).filter((platform) => platform && platform !== "Unknown"))].sort(),
     [memes],
   );
 
   const filtered = useMemo(() => {
     let result = memes;
+    if (search) result = result.filter((meme) => matchesSearch(meme, search));
+    if (severityFilter.length > 0) result = result.filter((meme) => severityFilter.includes(meme.context?.severity ?? "none"));
+    if (platformFilter) result = result.filter((meme) => meme.platform === platformFilter);
+    if (dateFrom) result = result.filter((meme) => meme.date_detected >= dateFrom);
+    if (dateTo) result = result.filter((meme) => meme.date_detected <= dateTo);
 
-    if (search) result = result.filter((m) => matchesSearch(m, search));
-
-    if (severityFilter.length > 0)
-      result = result.filter((m) => severityFilter.includes(m.context?.severity ?? "none"));
-
-    if (platformFilter) result = result.filter((m) => m.platform === platformFilter);
-
-    if (dateFrom)
-      result = result.filter((m) => m.date_detected >= dateFrom);
-    if (dateTo)
-      result = result.filter((m) => m.date_detected <= dateTo);
-
-    result = [...result].sort((a, b) => {
-      let av, bv;
+    return [...result].sort((a, b) => {
+      let av;
+      let bv;
       switch (sortCol) {
         case "severity": {
           const order = { high: 0, medium: 1, low: 2, none: 3 };
@@ -190,24 +173,20 @@ export default function DashboardPage() {
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
-
-    return result;
   }, [memes, search, severityFilter, platformFilter, dateFrom, dateTo, sortCol, sortDir]);
 
   const stats = useMemo(() => {
     const bySeverity = { high: 0, medium: 0, low: 0, none: 0 };
-    memes.forEach((m) => {
-      const s = m.context?.severity ?? "none";
-      if (s in bySeverity) bySeverity[s]++;
+    memes.forEach((meme) => {
+      const severity = meme.context?.severity ?? "none";
+      if (severity in bySeverity) bySeverity[severity]++;
       else bySeverity.none++;
     });
     return { total: memes.length, ...bySeverity };
   }, [memes]);
 
   const toggleSeverity = (level) => {
-    setSeverityFilter((prev) =>
-      prev.includes(level) ? prev.filter((s) => s !== level) : [...prev, level],
-    );
+    setSeverityFilter((prev) => (prev.includes(level) ? prev.filter((severity) => severity !== level) : [...prev, level]));
   };
 
   const clearFilters = () => {
@@ -218,12 +197,11 @@ export default function DashboardPage() {
     setDateTo("");
   };
 
-  const hasFilters = search || severityFilter.length > 0 || platformFilter || dateFrom || dateTo;
+  const hasFilters = Boolean(search || severityFilter.length > 0 || platformFilter || dateFrom || dateTo);
 
   const handleSort = (col) => {
-    if (sortCol === col) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
+    if (sortCol === col) setSortDir((direction) => (direction === "asc" ? "desc" : "asc"));
+    else {
       setSortCol(col);
       setSortDir("asc");
     }
@@ -236,113 +214,63 @@ export default function DashboardPage() {
     try {
       const data = await getSimilarMemes(meme.id);
       setSimilarResults(data);
-    } catch (err) {
-      setSimilarError("Failed to find similar memes");
+    } catch {
+      setSimilarError("Failed to find similar images");
     } finally {
       setSimilarLoading(false);
     }
   };
 
-  const inputClass =
-    "rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 focus:border-violet-500/40 focus:outline-none transition-colors";
-
   return (
-    <div className="min-h-screen bg-[#0a0a0c] flex flex-col">
-      {/* Header */}
-      <header className="border-b border-white/5 bg-[#0a0a0c]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-[1400px] mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
+    <AppShell
+      title="Evidence"
+      description="Search, filter, export, and inspect the flagged-content database used by the pre-upload gateway."
+      metrics={[
+        { label: "Flagged", value: stats.total },
+        { label: "High", value: stats.high },
+        { label: "Visible", value: filtered.length },
+      ]}
+    >
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <StatTile label="Total flagged" value={stats.total} icon={ShieldAlert} tone="sky" />
+          <StatTile label="High severity" value={stats.high} tone="red" />
+          <StatTile label="Medium" value={stats.medium} tone="amber" />
+          <StatTile label="Low" value={stats.low} tone="slate" />
+          <StatTile label="Unrated" value={stats.none} tone="slate" />
+        </div>
+
+        <Panel>
+          <PanelHeader eyebrow="Filters" title="Investigation controls" />
+          <div className="grid gap-3 p-4 xl:grid-cols-[minmax(260px,1fr)_auto_auto_auto_auto_auto] xl:items-end">
             <div>
-              <h1 className="text-sm font-bold text-white leading-tight tracking-tight">
-                DigitalDome
-              </h1>
-              <p className="text-[10px] text-white/25">Law Enforcement Dashboard</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              to="/gateway"
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/40 hover:text-white/60 transition-colors"
-            >
-              Gateway
-            </Link>
-            <Link
-              to="/"
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/40 hover:text-white/60 transition-colors"
-            >
-              DB Input
-            </Link>
-            <span className="px-3 py-1.5 rounded-lg bg-violet-500/15 text-xs text-violet-400 font-medium ring-1 ring-violet-500/20">
-              Dashboard
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-[1400px] mx-auto w-full px-6 py-6 flex flex-col gap-5">
-        {/* Stats bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 animate-fade-in-scale">
-          <StatCard label="Total Flagged" value={stats.total} accent="violet" />
-          <StatCard label="High Severity" value={stats.high} accent="red" />
-          <StatCard label="Medium" value={stats.medium} accent="orange" />
-          <StatCard label="Low" value={stats.low} accent="yellow" />
-          <StatCard label="None" value={stats.none} accent="gray" />
-        </div>
-
-        {/* Filters */}
-        <div className="rounded-2xl border border-white/5 bg-white/1.5 p-4 animate-fade-in-up">
-          <div className="flex flex-wrap items-end gap-3">
-            {/* Search */}
-            <div className="flex-1 min-w-[200px]">
-              <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">
-                Search
-              </label>
+              <FieldLabel>Search</FieldLabel>
               <div className="relative">
-                <svg
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/20"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search content, posters, communities, targets..."
-                  className={`${inputClass} w-full pl-9`}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Content, poster, community, target..."
+                  className={`${inputClass} pl-9`}
                 />
               </div>
             </div>
 
-            {/* Severity toggles */}
             <div>
-              <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">
-                Severity
-              </label>
-              <div className="flex gap-1">
+              <FieldLabel>Severity</FieldLabel>
+              <div className="flex flex-wrap gap-1">
                 {SEVERITY_LEVELS.map((level) => (
                   <button
                     key={level}
+                    type="button"
                     onClick={() => toggleSeverity(level)}
-                    className={`px-2.5 py-2 rounded-lg text-xs font-semibold uppercase transition-all ${
+                    className={cx(
+                      "h-10 rounded-lg border px-3 text-xs font-black uppercase tracking-wide transition",
                       severityFilter.includes(level)
-                        ? level === "high"
-                          ? "bg-red-500/20 text-red-400 ring-1 ring-red-500/30"
-                          : level === "medium"
-                            ? "bg-orange-500/20 text-orange-400 ring-1 ring-orange-500/30"
-                            : level === "low"
-                              ? "bg-yellow-500/20 text-yellow-400 ring-1 ring-yellow-500/30"
-                              : "bg-white/10 text-white/60 ring-1 ring-white/20"
-                        : "bg-white/5 text-white/30 hover:bg-white/8 hover:text-white/50"
-                    }`}
+                        ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                    )}
                   >
                     {level}
                   </button>
@@ -350,384 +278,230 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Platform */}
             <div>
-              <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">
-                Platform
-              </label>
-              <select
-                value={platformFilter}
-                onChange={(e) => setPlatformFilter(e.target.value)}
-                className={`${inputClass} appearance-none pr-8 min-w-[130px]`}
-              >
-                <option value="" className="bg-[#1a1a1a]">All</option>
-                {platforms.map((p) => (
-                  <option key={p} value={p} className="bg-[#1a1a1a]">{p}</option>
-                ))}
+              <FieldLabel>Platform</FieldLabel>
+              <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)} className={`${inputClass} min-w-[150px]`}>
+                <option value="">All platforms</option>
+                {platforms.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
               </select>
             </div>
 
-            {/* Date range */}
             <div>
-              <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">
-                From
-              </label>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className={`${inputClass} min-w-[130px]`}
-              />
+              <FieldLabel>From</FieldLabel>
+              <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className={`${inputClass} min-w-[145px]`} />
             </div>
             <div>
-              <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">
-                To
-              </label>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className={`${inputClass} min-w-[130px]`}
-              />
+              <FieldLabel>To</FieldLabel>
+              <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className={`${inputClass} min-w-[145px]`} />
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              {hasFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/40 hover:text-white/60 transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-              <button
-                onClick={() => exportCSV(filtered)}
-                disabled={filtered.length === 0}
-                className="px-3 py-2 rounded-lg bg-violet-600/80 hover:bg-violet-500 text-xs text-white font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export CSV
-              </button>
+            <div className="flex gap-2">
+              {hasFilters && <Button type="button" variant="secondary" size="lg" icon={FilterX} onClick={clearFilters}>Clear</Button>}
+              <Button type="button" variant="primary" size="lg" icon={Download} disabled={filtered.length === 0} onClick={() => exportCSV(filtered)}>
+                Export
+              </Button>
             </div>
           </div>
-        </div>
+        </Panel>
 
-        {/* Results */}
-        <div className="rounded-2xl border border-white/5 bg-white/1.5 overflow-hidden flex-1">
-          {/* Column headers */}
-          <div className="grid grid-cols-[56px_90px_100px_1fr_1fr_100px_1fr] gap-2 px-4 py-2.5 border-b border-white/5 bg-white/2">
-            <span className="text-[10px] text-white/25 uppercase tracking-wider" />
-            <button onClick={() => handleSort("severity")} className="flex items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider hover:text-white/40 transition-colors text-left">
-              Severity <SortIcon active={sortCol === "severity"} direction={sortDir} />
-            </button>
-            <button onClick={() => handleSort("platform")} className="flex items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider hover:text-white/40 transition-colors text-left">
-              Platform <SortIcon active={sortCol === "platform"} direction={sortDir} />
-            </button>
-            <button onClick={() => handleSort("poster")} className="flex items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider hover:text-white/40 transition-colors text-left">
-              Poster <SortIcon active={sortCol === "poster"} direction={sortDir} />
-            </button>
-            <button onClick={() => handleSort("target")} className="flex items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider hover:text-white/40 transition-colors text-left">
-              Target Group <SortIcon active={sortCol === "target"} direction={sortDir} />
-            </button>
-            <button onClick={() => handleSort("date_detected")} className="flex items-center gap-1 text-[10px] text-white/25 uppercase tracking-wider hover:text-white/40 transition-colors text-left">
-              Date <SortIcon active={sortCol === "date_detected"} direction={sortDir} />
-            </button>
-            <span className="text-[10px] text-white/25 uppercase tracking-wider">Description</span>
-          </div>
+        <Panel className="overflow-hidden">
+          <PanelHeader
+            eyebrow="Database"
+            title="Flagged evidence"
+            action={<span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{filtered.length} visible</span>}
+          />
 
-          {/* Loading shimmer */}
-          {loading && (
-            <div className="p-6 space-y-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-14 rounded-xl bg-white/3 animate-shimmer" />
-              ))}
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!loading && filtered.length === 0 && (
-            <div className="p-16 text-center">
-              <div className="mx-auto w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
-                <svg className="h-7 w-7 text-white/15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+          <div className="overflow-x-auto">
+            <div className="min-w-[1040px]">
+              <div className="grid grid-cols-[64px_110px_120px_1fr_1fr_120px_1.2fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <span />
+                <SortButton column="severity" activeColumn={sortCol} direction={sortDir} onSort={handleSort}>Severity</SortButton>
+                <SortButton column="platform" activeColumn={sortCol} direction={sortDir} onSort={handleSort}>Platform</SortButton>
+                <SortButton column="poster" activeColumn={sortCol} direction={sortDir} onSort={handleSort}>Poster</SortButton>
+                <SortButton column="target" activeColumn={sortCol} direction={sortDir} onSort={handleSort}>Target</SortButton>
+                <SortButton column="date_detected" activeColumn={sortCol} direction={sortDir} onSort={handleSort}>Date</SortButton>
+                <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">Description</span>
               </div>
-              <p className="text-sm text-white/30 font-medium">
-                {memes.length === 0 ? "No intelligence data available" : "No results match your filters"}
-              </p>
-              {hasFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="mt-3 text-xs text-violet-400/70 hover:text-violet-400 underline transition-colors"
-                >
-                  Clear all filters
-                </button>
+
+              {loading && (
+                <div className="space-y-3 p-6">
+                  {[...Array(6)].map((_, index) => <div key={index} className="h-16 animate-shimmer rounded-xl bg-slate-100" />)}
+                </div>
               )}
-            </div>
-          )}
 
-          {/* Rows */}
-          {!loading && filtered.length > 0 && (
-            <div className="divide-y divide-white/5 max-h-[calc(100vh-360px)] overflow-y-auto">
-              {filtered.map((meme) => (
-                <div key={meme.id}>
-                  <button
-                    onClick={() => {
-                      setExpandedId(expandedId === meme.id ? null : meme.id);
-                      setSimilarResults(null);
-                    }}
-                    className="w-full grid grid-cols-[56px_90px_100px_1fr_1fr_100px_1fr] gap-2 px-4 py-2.5 items-center hover:bg-white/2 transition-colors text-left"
-                  >
-                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-black/30 border border-white/5">
-                      <img
-                        src={imageUrl(getImagePath(meme))}
-                        alt=""
-                        onError={(e) => { e.target.style.display = 'none' }}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <Badge
-                      label={meme.context?.severity ?? "n/a"}
-                      colorClass={SEVERITY_STYLES[meme.context?.severity] ?? SEVERITY_STYLES.none}
-                    />
-                    <Badge
-                      label={meme.platform ?? "Unknown"}
-                      colorClass={PLATFORM_COLORS[meme.platform] ?? "bg-white/5 text-white/40 ring-white/10"}
-                    />
-                    <span className="text-xs text-white/60 truncate">
-                      {meme.original_poster ?? "Unknown"}
-                    </span>
-                    <span className="text-xs text-white/50 truncate">
-                      {meme.context?.target_group ?? "—"}
-                    </span>
-                    <span className="text-xs text-white/40 font-mono">
-                      {meme.date_detected ?? "—"}
-                    </span>
-                    <span className="text-xs text-white/40 truncate">
-                      {meme.context?.what_it_depicts ?? meme.context_notes ?? "—"}
-                    </span>
-                  </button>
+              {!loading && filtered.length === 0 && (
+                <EmptyState
+                  icon={Search}
+                  title={memes.length === 0 ? "No evidence available" : "No results match these filters"}
+                  description={memes.length === 0 ? "Ingest source images to populate the dashboard." : "Clear or adjust filters to broaden the evidence set."}
+                  action={hasFilters ? <Button type="button" variant="secondary" icon={FilterX} onClick={clearFilters}>Clear filters</Button> : null}
+                />
+              )}
 
-                  {/* Expanded detail */}
-                  {expandedId === meme.id && (
-                    <div className="px-4 pb-4 animate-fade-in-up">
-                      <div className="rounded-xl border border-violet-500/10 bg-violet-500/5 p-4">
-                        <div className="flex gap-5">
-                          <div className="shrink-0">
-                            <img
-                              src={imageUrl(getImagePath(meme))}
-                              alt=""
-                              onError={(e) => { e.target.style.display = 'none' }}
-                              className="w-40 h-40 rounded-xl object-cover border border-white/10"
-                            />
-                            <p className="text-[10px] text-white/20 font-mono mt-1.5 truncate max-w-[160px]">
-                              pHash: {meme.phash}
-                            </p>
-                          </div>
-                          <div className="flex-1 min-w-0 space-y-3">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge
-                                label={meme.context?.severity ?? "n/a"}
-                                colorClass={SEVERITY_STYLES[meme.context?.severity] ?? SEVERITY_STYLES.none}
-                              />
-                              <Badge
-                                label={meme.platform ?? "Unknown"}
-                                colorClass={PLATFORM_COLORS[meme.platform] ?? "bg-white/5 text-white/40 ring-white/10"}
-                              />
-                              {meme.source_url && (
-                                <a
-                                  href={meme.source_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[10px] text-violet-400/70 hover:text-violet-400 underline transition-colors"
-                                >
-                                  Source link
-                                </a>
-                              )}
-                            </div>
+              {!loading && filtered.length > 0 && (
+                <div className="max-h-[calc(100vh-430px)] divide-y divide-slate-100 overflow-y-auto">
+                  {filtered.map((meme) => (
+                    <div key={meme.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExpandedId(expandedId === meme.id ? null : meme.id);
+                          setSimilarResults(null);
+                        }}
+                        className="grid w-full grid-cols-[64px_110px_120px_1fr_1fr_120px_1.2fr] items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
+                      >
+                        <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                          <img
+                            src={imageUrl(getImagePath(meme))}
+                            alt=""
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+                            }}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <StatusBadge value={meme.context?.severity ?? "none"} />
+                        <StatusBadge value={meme.platform ?? "Unknown"} map={platformStyles} />
+                        <span className="truncate text-sm font-semibold text-slate-700">{meme.original_poster ?? "Unknown"}</span>
+                        <span className="truncate text-sm text-slate-600">{meme.context?.target_group ?? "-"}</span>
+                        <span className="font-mono text-xs text-slate-500">{meme.date_detected ?? "-"}</span>
+                        <span className="truncate text-sm text-slate-500">{meme.context?.what_it_depicts ?? meme.context_notes ?? "-"}</span>
+                      </button>
 
-                            <ContextRow label="What it depicts" value={meme.context?.what_it_depicts} />
-                            <ContextRow label="Why harmful" value={meme.context?.why_harmful} />
-                            <ContextRow label="Target group" value={meme.context?.target_group} />
-                            <ContextRow label="Origin community" value={meme.context?.origin_community} />
-
-                            {meme.context?.coded_elements?.length > 0 && (
+                      {expandedId === meme.id && (
+                        <div className="bg-slate-50 px-4 pb-4">
+                          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div className="grid gap-5 lg:grid-cols-[180px_1fr]">
                               <div>
-                                <p className="text-[10px] text-white/25 uppercase tracking-wider mb-1">
-                                  Coded Elements
-                                </p>
-                                <div className="flex flex-wrap gap-1">
-                                  {meme.context.coded_elements.map((el, i) => (
-                                    <span
-                                      key={i}
-                                      className="inline-flex rounded-md bg-violet-500/10 px-2 py-0.5 text-[10px] text-violet-300 ring-1 ring-violet-500/15"
-                                    >
-                                      {el}
-                                    </span>
-                                  ))}
-                                </div>
+                                <img
+                                  src={imageUrl(getImagePath(meme))}
+                                  alt=""
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                  }}
+                                  className="h-44 w-full rounded-xl border border-slate-200 object-cover"
+                                />
+                                <p className="mt-2 truncate font-mono text-[11px] text-slate-400">pHash: {meme.phash}</p>
                               </div>
-                            )}
 
-                            {meme.context_notes && (
-                              <ContextRow label="Analyst notes" value={meme.context_notes} />
-                            )}
+                              <div className="min-w-0 space-y-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <StatusBadge value={meme.context?.severity ?? "none"} />
+                                  <StatusBadge value={meme.platform ?? "Unknown"} map={platformStyles} />
+                                  {meme.source_url && (
+                                    <a href={meme.source_url} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-sky-700 underline-offset-2 hover:underline">
+                                      Source link
+                                    </a>
+                                  )}
+                                </div>
 
-                            <div className="flex items-center gap-4 pt-1 text-[10px] text-white/20">
-                              <span>Poster: <span className="text-white/40">{meme.original_poster ?? "Unknown"}</span></span>
-                              <span>Community: <span className="text-white/40">{meme.community}</span></span>
-                              <span>Detected: <span className="text-white/40">{meme.date_detected}</span></span>
-                              <span>ID: <span className="text-white/40 font-mono">{meme.id}</span></span>
-                              <button
-                                onClick={() => handleFindSimilar(meme)}
-                                disabled={similarLoading}
-                                className="px-3 py-1 text-xs rounded-full border border-purple-500/50
-                                           text-purple-400 hover:bg-purple-500/20 transition-colors
-                                           disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {similarLoading ? "Searching..." : "\uD83D\uDD0D Find Similar"}
-                              </button>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <ContextRow label="What it depicts" value={meme.context?.what_it_depicts} />
+                                  <ContextRow label="Why harmful" value={meme.context?.why_harmful} />
+                                  <ContextRow label="Target group" value={meme.context?.target_group} />
+                                  <ContextRow label="Origin community" value={meme.context?.origin_community} />
+                                </div>
+
+                                {meme.context?.coded_elements?.length > 0 && (
+                                  <div>
+                                    <p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">Coded elements</p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      {meme.context.coded_elements.map((element, index) => (
+                                        <span key={`${element}-${index}`} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-600">
+                                          {element}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {meme.context_notes && <ContextRow label="Analyst notes" value={meme.context_notes} />}
+
+                                <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3 text-xs text-slate-500">
+                                  <span>Poster: <span className="font-bold text-slate-700">{meme.original_poster ?? "Unknown"}</span></span>
+                                  <span>Community: <span className="font-bold text-slate-700">{meme.community || "Unclassified"}</span></span>
+                                  <span>Detected: <span className="font-bold text-slate-700">{meme.date_detected || "-"}</span></span>
+                                  <span>ID: <span className="font-mono font-bold text-slate-700">{meme.id}</span></span>
+                                  <Button type="button" variant="secondary" size="sm" icon={Sparkles} disabled={similarLoading} onClick={() => handleFindSimilar(meme)}>
+                                    {similarLoading ? "Searching..." : "Find similar"}
+                                  </Button>
+                                </div>
+
+                                {similarResults && similarResults.source_id === meme.id && (
+                                  <SimilarResults results={similarResults} error={similarError} />
+                                )}
+                                {similarError && (!similarResults || similarResults.source_id !== meme.id) && (
+                                  <p className="text-sm font-semibold text-red-600">{similarError}</p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
-
-                        {similarResults && similarResults.source_id === meme.id && (
-                          <div className="mt-4 border-t border-white/10 pt-4">
-                            <div className="flex items-center gap-2 mb-3">
-                              <span className="text-xs font-semibold text-purple-400 uppercase tracking-widest">
-                                Similar Memes in Database
-                              </span>
-                              <span className="text-xs text-white/40">
-                                {similarResults.total_similar} found
-                              </span>
-                            </div>
-
-                            {similarResults.total_similar === 0 ? (
-                              <p className="text-xs text-white/40 italic">
-                                No similar memes found in the database.
-                              </p>
-                            ) : (
-                              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                                {similarResults.results.map((result) => (
-                                  <div
-                                    key={result.id}
-                                    className="bg-white/5 rounded-xl border border-white/10
-                                               overflow-hidden hover:border-purple-500/40 transition-colors"
-                                  >
-                                    <div className="w-full h-24 bg-white/5 overflow-hidden">
-                                      <img
-                                        src={imageUrl(result.thumbnail_url)}
-                                        alt=""
-                                        onError={(e) => { e.target.style.display = "none" }}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    </div>
-                                    <div className="p-2 space-y-1">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs text-white/40">Match</span>
-                                        <span className={`text-xs font-bold ${
-                                          result.similarity_score >= 80 ? "text-red-400" :
-                                          result.similarity_score >= 60 ? "text-orange-400" :
-                                          "text-yellow-400"
-                                        }`}>
-                                          {result.similarity_score}%
-                                        </span>
-                                      </div>
-                                      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
-                                        <div
-                                          className={`h-full rounded-full ${
-                                            result.similarity_score >= 80 ? "bg-red-500" :
-                                            result.similarity_score >= 60 ? "bg-orange-500" :
-                                            "bg-yellow-500"
-                                          }`}
-                                          style={{ width: `${result.similarity_score}%` }}
-                                        />
-                                      </div>
-                                      <p className="text-xs text-white/30">
-                                        Distance: {result.hamming_distance} bits
-                                      </p>
-                                      <p className="text-xs text-white/50 truncate">
-                                        {result.source || "Unknown source"}
-                                      </p>
-                                      {result.context?.severity && (
-                                        <span className={`inline-block text-xs px-2 py-0.5 rounded-full ${
-                                          result.context.severity === "high" ? "bg-red-500/20 text-red-400" :
-                                          result.context.severity === "medium" ? "bg-orange-500/20 text-orange-400" :
-                                          "bg-yellow-500/20 text-yellow-400"
-                                        }`}>
-                                          {result.context.severity}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {similarError && (
-                              <p className="text-xs text-red-400 mt-2">{similarError}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
+          </div>
 
-          {/* Footer bar */}
           {!loading && filtered.length > 0 && (
-            <div className="px-4 py-2.5 border-t border-white/5 bg-white/2 flex items-center justify-between">
-              <span className="text-[11px] text-white/25">
-                Showing <span className="text-white/40 font-semibold">{filtered.length}</span>
-                {filtered.length !== memes.length && (
-                  <> of <span className="text-white/40 font-semibold">{memes.length}</span></>
-                )}{" "}
-                entries
-              </span>
-              <span className="text-[10px] text-white/15">DigitalDome Threat Intelligence</span>
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+              <span>Showing <span className="font-black text-slate-800">{filtered.length}</span>{filtered.length !== memes.length && <> of <span className="font-black text-slate-800">{memes.length}</span></>} entries</span>
+              <span className="hidden items-center gap-1 sm:inline-flex"><CalendarDays className="h-3.5 w-3.5" aria-hidden="true" /> Auto-refresh every 10s</span>
             </div>
           )}
+        </Panel>
+      </div>
+    </AppShell>
+  );
+}
+
+function SimilarResults({ results, error }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Similar images</p>
+        <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-600">{results.total_similar} found</span>
+      </div>
+      {results.total_similar === 0 ? (
+        <p className="text-sm text-slate-500">No similar images found in the database.</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          {results.results.map((result) => (
+            <div key={result.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="h-28 overflow-hidden bg-slate-100">
+                <img
+                  src={imageUrl(result.thumbnail_url)}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="space-y-2 p-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-500">Match</span>
+                  <span className={cx("font-black", result.similarity_score >= 80 ? "text-red-700" : result.similarity_score >= 60 ? "text-orange-700" : "text-amber-700")}>
+                    {result.similarity_score}%
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={cx("h-full rounded-full", result.similarity_score >= 80 ? "bg-red-600" : result.similarity_score >= 60 ? "bg-orange-500" : "bg-amber-500")}
+                    style={{ width: `${result.similarity_score}%` }}
+                  />
+                </div>
+                <p className="text-xs text-slate-500">Distance: {result.hamming_distance} bits</p>
+                <p className="truncate text-xs font-semibold text-slate-700">{result.source || "Unknown source"}</p>
+                {result.context?.severity && <StatusBadge value={result.context.severity} />}
+              </div>
+            </div>
+          ))}
         </div>
-      </main>
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent }) {
-  const accents = {
-    violet: "from-violet-500/10 to-indigo-500/10 ring-violet-500/15",
-    red: "from-red-500/10 to-red-500/5 ring-red-500/15",
-    orange: "from-orange-500/10 to-orange-500/5 ring-orange-500/15",
-    yellow: "from-yellow-500/10 to-yellow-500/5 ring-yellow-500/15",
-    gray: "from-white/5 to-white/3 ring-white/10",
-  };
-  const textAccents = {
-    violet: "text-violet-400",
-    red: "text-red-400",
-    orange: "text-orange-400",
-    yellow: "text-yellow-400",
-    gray: "text-white/50",
-  };
-  return (
-    <div className={`rounded-xl bg-linear-to-br ${accents[accent]} ring-1 p-3.5`}>
-      <p className="text-[10px] text-white/30 uppercase tracking-wider">{label}</p>
-      <p className={`text-2xl font-bold mt-0.5 ${textAccents[accent]}`}>{value}</p>
-    </div>
-  );
-}
-
-function ContextRow({ label, value }) {
-  if (!value) return null;
-  return (
-    <div>
-      <p className="text-[10px] text-white/25 uppercase tracking-wider mb-0.5">{label}</p>
-      <p className="text-xs text-white/60 leading-relaxed">{value}</p>
+      )}
+      {error && <p className="mt-2 text-sm font-semibold text-red-600">{error}</p>}
     </div>
   );
 }

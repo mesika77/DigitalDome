@@ -1,6 +1,7 @@
 import { Component } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import { AlertTriangle } from "lucide-react";
 import GatewayPage from "./pages/GatewayPage";
 import AdminPage from "./pages/AdminPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -15,21 +16,19 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center px-4">
-          <div className="text-center">
-            <div className="mx-auto w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mb-4 ring-1 ring-red-500/20">
-              <svg className="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
+        <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+          <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-red-200 bg-red-50 text-red-700">
+              <AlertTriangle className="h-7 w-7" aria-hidden="true" />
             </div>
-            <p className="text-white/60 text-sm font-medium mb-1">Something went wrong</p>
-            <p className="text-white/30 text-xs mb-4">The page encountered an error.</p>
+            <p className="mb-1 text-sm font-black text-slate-900">Something went wrong</p>
+            <p className="mb-5 text-sm text-slate-500">The page encountered an error.</p>
             <Link
               to="/"
               onClick={() => this.setState({ hasError: false })}
-              className="inline-block px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white/70 transition-colors"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
-              Back to DB Input
+              Back to ingestion
             </Link>
           </div>
         </div>
@@ -47,16 +46,18 @@ export default function App() {
           position="top-center"
           toastOptions={{
             style: {
-              background: "#1a1a1e",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,0.08)",
+              background: "#ffffff",
+              color: "#0f172a",
+              border: "1px solid #e2e8f0",
               fontSize: "14px",
+              boxShadow: "0 16px 40px rgba(15,23,42,0.14)",
             },
             error: {
               duration: 5000,
               style: {
-                background: "#1a1a1e",
-                border: "1px solid rgba(239,68,68,0.3)",
+                background: "#fef2f2",
+                border: "1px solid #fecaca",
+                color: "#991b1b",
               },
             },
           }}

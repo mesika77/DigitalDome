@@ -1,9 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { CheckCircle2, ClipboardList, Database, FilePlus2, Plus, UploadCloud } from "lucide-react";
+import AppShell from "../components/AppShell";
 import DropZone from "../components/DropZone";
 import DatabaseGrid from "../components/DatabaseGrid";
 import { injectBatch, getBatches, deleteMeme, deleteBatch } from "../api/client";
+import {
+  Button,
+  FieldLabel,
+  InlineAlert,
+  Panel,
+  PanelHeader,
+  Spinner,
+  StatTile,
+} from "../components/ui";
+import { inputClass, smallInputClass } from "../components/uiConfig";
 
 const PLATFORMS = ["Reddit", "4chan", "Telegram", "Twitter/X", "Discord", "Gab", "Other"];
 
@@ -17,7 +28,6 @@ export default function AdminPage() {
   const [lastResult, setLastResult] = useState(null);
   const [successCount, setSuccessCount] = useState(0);
 
-  // Bulk-fill values
   const [bulkPlatform, setBulkPlatform] = useState("");
   const [bulkPoster, setBulkPoster] = useState("");
   const [bulkUrl, setBulkUrl] = useState("");
@@ -26,7 +36,9 @@ export default function AdminPage() {
     try {
       const data = await getBatches();
       if (Array.isArray(data)) setBatches(data);
-    } catch { /* silent */ }
+    } catch {
+      /* keep the ingestion form usable if refresh fails */
+    }
   }, []);
 
   useEffect(() => {
@@ -42,26 +54,26 @@ export default function AdminPage() {
         platform: bulkPlatform || "",
         original_poster: bulkPoster || "",
         source_url: bulkUrl || "",
-      }))
+      })),
     );
   };
 
   const applyBulkFill = () => {
     setFileMeta((prev) =>
-      prev.map((m) => ({
-        platform: bulkPlatform || m.platform,
-        original_poster: bulkPoster || m.original_poster,
-        source_url: bulkUrl || m.source_url,
-      }))
+      prev.map((meta) => ({
+        platform: bulkPlatform || meta.platform,
+        original_poster: bulkPoster || meta.original_poster,
+        source_url: bulkUrl || meta.source_url,
+      })),
     );
   };
 
   const updateMeta = (idx, field, value) => {
-    setFileMeta((prev) => prev.map((m, i) => (i === idx ? { ...m, [field]: value } : m)));
+    setFileMeta((prev) => prev.map((meta, index) => (index === idx ? { ...meta, [field]: value } : meta)));
   };
 
-  const totalMemes = batches.reduce((sum, b) => sum + (b.memes?.length || 0), 0);
-  const allHavePlatform = fileMeta.length > 0 && fileMeta.every((m) => m.platform);
+  const totalMemes = batches.reduce((sum, batch) => sum + (batch.memes?.length || 0), 0);
+  const allHavePlatform = fileMeta.length > 0 && fileMeta.every((meta) => meta.platform);
   const canSubmit = files.length > 0 && allHavePlatform && !loading;
 
   const handleSubmit = async () => {
@@ -72,7 +84,7 @@ export default function AdminPage() {
 
     try {
       const formData = new FormData();
-      files.forEach((f) => formData.append("files", f));
+      files.forEach((file) => formData.append("files", file));
       formData.append("image_metadata", JSON.stringify(fileMeta));
       if (analystNotes.trim()) formData.append("analyst_notes", analystNotes.trim());
 
@@ -84,13 +96,11 @@ export default function AdminPage() {
       setBulkPlatform("");
       setBulkPoster("");
       setBulkUrl("");
-      setSuccessCount((p) => p + result.processed);
+      setSuccessCount((previous) => previous + result.processed);
       fetchBatches();
     } catch (err) {
       const detail = err.response?.data?.detail || "Failed to process batch";
-      if (err.response?.status === 429 || err.response?.status === 503) {
-        toast.error(detail);
-      }
+      if (err.response?.status === 429 || err.response?.status === 503) toast.error(detail);
       setError(detail);
     } finally {
       setLoading(false);
@@ -107,207 +117,126 @@ export default function AdminPage() {
     fetchBatches();
   };
 
-  const inputClasses = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/20 focus:border-red-500/40 focus:outline-none transition-colors";
-  const smallInput = "w-full rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white placeholder-white/20 focus:border-red-500/40 focus:outline-none transition-colors";
+  const missingPlatformCount = fileMeta.filter((meta) => !meta.platform).length;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
-      <header className="border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-red-500 to-red-700 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-white leading-tight tracking-tight">DigitalDome Intel</h1>
-              <p className="text-[10px] text-white/25">Batch Ingestion Console</p>
-            </div>
+    <AppShell
+      title="Ingestion"
+      description="Upload flagged content, attach source metadata, and keep the evidence database current for downstream scans."
+      metrics={[
+        { label: "Batches", value: batches.length },
+        { label: "Images", value: totalMemes },
+        { label: "This session", value: successCount ? `+${successCount}` : "0" },
+      ]}
+    >
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(420px,0.9fr)_1.4fr]">
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile label="Queued" value={files.length} icon={UploadCloud} tone="sky" />
+            <StatTile label="Ready" value={allHavePlatform ? files.length : Math.max(files.length - missingPlatformCount, 0)} icon={CheckCircle2} tone="emerald" />
+            <StatTile label="Missing" value={missingPlatformCount} icon={ClipboardList} tone={missingPlatformCount ? "amber" : "slate"} />
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex items-center gap-3 text-xs text-white/25">
-              <span><span className="text-white/50 font-semibold">{batches.length}</span> batches</span>
-              <span className="text-white/10">|</span>
-              <span><span className="text-white/50 font-semibold">{totalMemes}</span> images</span>
-              {successCount > 0 && (
-                <>
-                  <span className="text-white/10">|</span>
-                  <span className="text-emerald-400/60"><span className="font-semibold">+{successCount}</span> this session</span>
-                </>
-              )}
-            </div>
-            <Link
-              to="/gateway"
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/50 hover:text-white/70 transition-colors flex items-center gap-1.5"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Gateway
-            </Link>
-            <Link
-              to="/dashboard"
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-white/50 hover:text-white/70 transition-colors"
-            >
-              Dashboard
-            </Link>
-          </div>
-        </div>
-      </header>
+          <Panel>
+            <PanelHeader eyebrow="Batch ingestion" title="Upload and classify source images">
+              Platform is required for every image. Poster and URL are optional but useful for investigation.
+            </PanelHeader>
+            <div className="space-y-4 p-4">
+              <DropZone onFileSelect={handleFilesSelected} disabled={loading} multiple />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-          {/* Left: Batch inject form */}
-          <div className="lg:col-span-2">
-            <div className="rounded-2xl border border-white/5 bg-white/1.5 p-5 sticky top-20">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-4 flex items-center gap-2">
-                <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Batch Intelligence Upload
-              </h2>
-
-              <DropZone onFileSelect={handleFilesSelected} variant="dark" disabled={loading} multiple />
-
-              {/* Bulk fill controls */}
               {files.length > 1 && (
-                <div className="mt-3 rounded-xl bg-blue-500/5 border border-blue-500/15 p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] text-blue-400/70 uppercase tracking-wider font-semibold">Bulk Fill All Images</p>
-                    <button
-                      onClick={applyBulkFill}
-                      className="text-[10px] bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-2 py-0.5 rounded transition-colors font-medium"
-                    >
-                      Apply to all
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <select
-                      value={bulkPlatform}
-                      onChange={(e) => setBulkPlatform(e.target.value)}
-                      className={`${smallInput} appearance-none`}
-                    >
-                      <option value="" className="bg-[#1a1a1a]">Platform</option>
-                      {PLATFORMS.map((p) => <option key={p} value={p} className="bg-[#1a1a1a]">{p}</option>)}
-                    </select>
-                    <input
-                      type="text"
-                      value={bulkPoster}
-                      onChange={(e) => setBulkPoster(e.target.value)}
-                      placeholder="Poster"
-                      className={smallInput}
-                    />
-                    <input
-                      type="text"
-                      value={bulkUrl}
-                      onChange={(e) => setBulkUrl(e.target.value)}
-                      placeholder="URL"
-                      className={smallInput}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Per-image metadata table */}
-              {files.length > 0 && (
-                <div className="mt-3 space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                  {files.map((file, idx) => (
-                    <div key={idx} className="flex items-center gap-2 rounded-lg bg-white/2 border border-white/5 p-2">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={file.name}
-                        className="w-10 h-10 rounded object-cover border border-white/10 shrink-0"
-                      />
-                      <div className="flex-1 min-w-0 grid grid-cols-3 gap-1.5">
-                        <select
-                          value={fileMeta[idx]?.platform || ""}
-                          onChange={(e) => updateMeta(idx, "platform", e.target.value)}
-                          className={`${smallInput} appearance-none`}
-                          disabled={loading}
-                        >
-                          <option value="" className="bg-[#1a1a1a]">Platform *</option>
-                          {PLATFORMS.map((p) => <option key={p} value={p} className="bg-[#1a1a1a]">{p}</option>)}
-                        </select>
-                        <input
-                          type="text"
-                          value={fileMeta[idx]?.original_poster || ""}
-                          onChange={(e) => updateMeta(idx, "original_poster", e.target.value)}
-                          placeholder="Poster"
-                          className={smallInput}
-                          disabled={loading}
-                        />
-                        <input
-                          type="text"
-                          value={fileMeta[idx]?.source_url || ""}
-                          onChange={(e) => updateMeta(idx, "source_url", e.target.value)}
-                          placeholder="URL"
-                          className={smallInput}
-                          disabled={loading}
-                        />
-                      </div>
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.14em] text-sky-700">Bulk metadata</p>
+                      <p className="text-xs text-sky-700/70">Apply shared source details across selected images.</p>
                     </div>
-                  ))}
+                    <Button type="button" variant="primary" size="sm" icon={Plus} onClick={applyBulkFill}>
+                      Apply
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <select value={bulkPlatform} onChange={(event) => setBulkPlatform(event.target.value)} className={smallInputClass}>
+                      <option value="">Platform</option>
+                      {PLATFORMS.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
+                    </select>
+                    <input type="text" value={bulkPoster} onChange={(event) => setBulkPoster(event.target.value)} placeholder="Poster" className={smallInputClass} />
+                    <input type="text" value={bulkUrl} onChange={(event) => setBulkUrl(event.target.value)} placeholder="Source URL" className={smallInputClass} />
+                  </div>
                 </div>
               )}
 
-              {/* Analyst notes */}
-              <div className="mt-3">
-                <label className="block text-[10px] text-white/30 mb-1 uppercase tracking-wider">Analyst Notes</label>
+              {files.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Image metadata</p>
+                    <p className="text-xs font-semibold text-slate-500">{files.length} selected</p>
+                  </div>
+                  <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
+                    {files.map((file, idx) => (
+                      <div key={`${file.name}-${idx}`} className="grid grid-cols-[48px_1fr] gap-3 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                        <img src={URL.createObjectURL(file)} alt={file.name} className="h-12 w-12 rounded-md border border-slate-200 object-cover" />
+                        <div className="min-w-0">
+                          <p className="mb-2 truncate text-xs font-bold text-slate-700">{file.name}</p>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <select value={fileMeta[idx]?.platform || ""} onChange={(event) => updateMeta(idx, "platform", event.target.value)} className={smallInputClass} disabled={loading}>
+                              <option value="">Platform *</option>
+                              {PLATFORMS.map((platform) => <option key={platform} value={platform}>{platform}</option>)}
+                            </select>
+                            <input type="text" value={fileMeta[idx]?.original_poster || ""} onChange={(event) => updateMeta(idx, "original_poster", event.target.value)} placeholder="Poster" className={smallInputClass} disabled={loading} />
+                            <input type="text" value={fileMeta[idx]?.source_url || ""} onChange={(event) => updateMeta(idx, "source_url", event.target.value)} placeholder="Source URL" className={smallInputClass} disabled={loading} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <FieldLabel>Analyst notes</FieldLabel>
                 <textarea
                   value={analystNotes}
-                  onChange={(e) => setAnalystNotes(e.target.value)}
-                  placeholder="Additional context or observations..."
-                  rows={2}
-                  className={`${inputClasses} resize-none`}
+                  onChange={(event) => setAnalystNotes(event.target.value)}
+                  placeholder="Add observations, source context, or collection notes..."
+                  rows={3}
+                  className={`${inputClass} resize-none`}
                   disabled={loading}
                 />
               </div>
 
-              {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+              {error && <InlineAlert>{error}</InlineAlert>}
 
               {lastResult && (
-                <div className="mt-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3">
-                  <p className="text-xs text-emerald-400 font-semibold">
-                    Batch processed: {lastResult.processed} images
-                    {lastResult.failed > 0 && <span className="text-red-400"> ({lastResult.failed} failed)</span>}
-                  </p>
-                  <p className="text-[10px] text-emerald-400/50 mt-0.5 font-mono">
-                    ID: {lastResult.batch.batch_id.slice(0, 12)}...
-                  </p>
-                </div>
+                <InlineAlert tone="emerald" icon={CheckCircle2}>
+                  <span className="font-bold">Batch processed:</span> {lastResult.processed} images
+                  {lastResult.failed > 0 && <span className="font-bold text-red-700"> ({lastResult.failed} failed)</span>}
+                  <span className="ml-2 font-mono text-xs">ID {lastResult.batch.batch_id.slice(0, 12)}</span>
+                </InlineAlert>
               )}
 
-              <button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className="mt-4 w-full rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
+              {!allHavePlatform && files.length > 0 && (
+                <InlineAlert tone="amber">
+                  Add a platform for every selected image before ingesting this batch.
+                </InlineAlert>
+              )}
+
+              <Button type="button" variant="primary" size="lg" icon={loading ? undefined : FilePlus2} disabled={!canSubmit} onClick={handleSubmit} className="w-full">
                 {loading ? (
                   <>
-                    <div className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                    Processing {files.length} image{files.length !== 1 ? "s" : ""}...
+                    <Spinner />
+                    Processing {files.length} image{files.length !== 1 ? "s" : ""}
                   </>
                 ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Ingest {files.length > 0 ? `${files.length} Image${files.length !== 1 ? "s" : ""}` : "Batch"}
-                  </>
+                  <>Ingest {files.length > 0 ? `${files.length} image${files.length !== 1 ? "s" : ""}` : "batch"}</>
                 )}
-              </button>
+              </Button>
             </div>
-          </div>
-
-          {/* Right: Database grid */}
-          <div className="lg:col-span-3">
-            <DatabaseGrid batches={batches} onDelete={handleDelete} onDeleteBatch={handleDeleteBatch} />
-          </div>
+          </Panel>
         </div>
-      </main>
-    </div>
+
+        <DatabaseGrid batches={batches} onDelete={handleDelete} onDeleteBatch={handleDeleteBatch} />
+      </div>
+    </AppShell>
   );
 }
