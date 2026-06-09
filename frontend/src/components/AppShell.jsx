@@ -1,12 +1,13 @@
 import { NavLink } from "react-router-dom";
 import { createElement } from "react";
-import { Database, Gauge, ScanLine, ShieldCheck } from "lucide-react";
+import { Database, Gauge, Network, ScanLine, ShieldCheck } from "lucide-react";
 import { cx } from "./uiConfig";
 
 const navItems = [
   { to: "/", label: "Ingestion", icon: Database, end: true },
   { to: "/gateway", label: "Scan", icon: ScanLine },
   { to: "/dashboard", label: "Evidence", icon: Gauge },
+  { to: "/dataflows", label: "Dataflows", icon: Network },
 ];
 
 export default function AppShell({ title, description, metrics = [], children }) {
@@ -54,7 +55,7 @@ export default function AppShell({ title, description, metrics = [], children })
         </div>
 
         <div className="border-t border-slate-200 bg-white md:hidden">
-          <nav className="mx-auto grid max-w-[1440px] grid-cols-3 gap-1 px-4 py-2">
+          <nav className="mx-auto grid max-w-[1440px] grid-cols-4 gap-1 px-4 py-2">
             {navItems.map(({ to, label, icon: Icon, end }) => (
               <NavLink
                 key={to}

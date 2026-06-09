@@ -1,15 +1,16 @@
 import os
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
@@ -30,6 +31,9 @@ load_dotenv()
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
 MIN_MATCH_SIMILARITY = 85
 FRONTEND_DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+AGENT_HEARTBEATS: dict[str, dict[str, Any]] = {}
+HEARTBEAT_HEALTHY_SECONDS = 120
+HEARTBEAT_DEGRADED_SECONDS = 300
 
 app = FastAPI(
     title="DigitalDome Threat Intelligence API",
@@ -59,6 +63,17 @@ API_KEYS = {
     "demo-social-001": "Social Media Platform Demo",
     "demo-judge-001": "Hackathon Judge Access",
 }
+
+
+class AgentHeartbeat(BaseModel):
+    agent_id: str = Field(..., min_length=1)
+    agent_type: str = "agent"
+    source: str = "Unknown"
+    community: str = "Unclassified"
+    status: str = "healthy"
+    message: Optional[str] = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    last_error: Optional[str] = None
 
 
 async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
@@ -139,6 +154,305 @@ def _batch_to_response(batch: UploadBatch) -> UploadBatchResponse:
         created_at=batch.created_at,
         memes=[_meme_to_response(m) for m in batch.memes],
     )
+
+
+# ---------------------------------------------------------------------------
+# Dataflow monitor endpoints
+# ---------------------------------------------------------------------------
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _iso(dt: datetime | None) -> str | None:
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _node(
+    node_id: str,
+    label: str,
+    node_type: str,
+    status: str,
+    details: str,
+    metrics: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    return {
+        "id": node_id,
+        "label": label,
+        "type": node_type,
+        "status": status,
+        "details": details,
+        "metrics": metrics or {},
+    }
+
+
+def _edge(source: str, target: str, label: str, status: str) -> dict[str, str]:
+    return {"from": source, "to": target, "label": label, "status": status}
+
+
+def _issue(severity: str, component: str, message: str) -> dict[str, str]:
+    return {"severity": severity, "component": component, "message": message}
+
+
+def _combine_status(*statuses: str) -> str:
+    if "down" in statuses:
+        return "down"
+    if "degraded" in statuses:
+        return "degraded"
+    return "healthy"
+
+
+def _storage_status() -> tuple[str, dict[str, Any], list[dict[str, str]]]:
+    issues = []
+    metrics = {}
+    status = "healthy"
+
+    for folder in ("source", "gateway"):
+        path = Path(UPLOAD_DIR, folder)
+        exists = path.exists() and path.is_dir()
+        writable = False
+        if exists:
+            probe = path / ".monitor_write_check"
+            try:
+                probe.write_text("ok")
+                probe.unlink(missing_ok=True)
+                writable = True
+            except OSError:
+                writable = False
+
+        metrics[f"{folder}_exists"] = exists
+        metrics[f"{folder}_writable"] = writable
+        if not exists:
+            status = "down"
+            issues.append(_issue("critical", "storage", f"Upload folder missing: {path}"))
+        elif not writable:
+            status = "down"
+            issues.append(_issue("critical", "storage", f"Upload folder is not writable: {path}"))
+
+    return status, metrics, issues
+
+
+def _heartbeat_age_seconds(seen_at: datetime, now: datetime) -> int:
+    return max(0, int((now - seen_at).total_seconds()))
+
+
+def _agent_status(record: dict[str, Any], now: datetime) -> str:
+    reported = record.get("reported_status", "healthy")
+    if reported == "down":
+        return "down"
+    age = _heartbeat_age_seconds(record["last_seen_at"], now)
+    if age > HEARTBEAT_DEGRADED_SECONDS:
+        return "down"
+    if reported == "degraded" or age > HEARTBEAT_HEALTHY_SECONDS:
+        return "degraded"
+    return "healthy"
+
+
+def _agent_payload(record: dict[str, Any], now: datetime) -> dict[str, Any]:
+    status = _agent_status(record, now)
+    age = _heartbeat_age_seconds(record["last_seen_at"], now)
+    return {
+        "agent_id": record["agent_id"],
+        "agent_type": record["agent_type"],
+        "source": record["source"],
+        "community": record["community"],
+        "status": status,
+        "reported_status": record.get("reported_status", "healthy"),
+        "message": record.get("message"),
+        "metrics": record.get("metrics", {}),
+        "last_error": record.get("last_error"),
+        "last_seen_at": _iso(record["last_seen_at"]),
+        "age_seconds": age,
+    }
+
+
+def _known_agent_status(agent_type: str, now: datetime) -> tuple[str, list[dict[str, Any]]]:
+    agents = [
+        _agent_payload(record, now)
+        for record in AGENT_HEARTBEATS.values()
+        if record.get("agent_type") == agent_type
+    ]
+    if not agents:
+        return "down", []
+    return _combine_status(*(agent["status"] for agent in agents)), agents
+
+
+@app.post("/api/agents/heartbeat")
+async def agent_heartbeat(heartbeat: AgentHeartbeat):
+    status = heartbeat.status.lower()
+    if status not in {"healthy", "degraded", "down"}:
+        raise HTTPException(status_code=400, detail="status must be healthy, degraded, or down")
+
+    now = _utcnow()
+    record = {
+        "agent_id": heartbeat.agent_id,
+        "agent_type": heartbeat.agent_type,
+        "source": heartbeat.source,
+        "community": heartbeat.community,
+        "reported_status": status,
+        "message": heartbeat.message,
+        "metrics": heartbeat.metrics,
+        "last_error": heartbeat.last_error,
+        "last_seen_at": now,
+    }
+    AGENT_HEARTBEATS[heartbeat.agent_id] = record
+    return {"ok": True, "agent_id": heartbeat.agent_id, "received_at": _iso(now)}
+
+
+@app.get("/api/dataflows/status")
+async def get_dataflow_status(db: Session = Depends(get_db)):
+    now = _utcnow()
+    issues: list[dict[str, str]] = []
+    nodes: list[dict[str, Any]] = []
+
+    total_memes = 0
+    total_batches = 0
+    latest_ingest = None
+    db_status = "healthy"
+    try:
+        total_memes = db.query(FlaggedMeme).count()
+        total_batches = db.query(UploadBatch).count()
+        latest = db.query(FlaggedMeme).order_by(FlaggedMeme.created_at.desc()).first()
+        latest_ingest = latest.created_at if latest else None
+    except Exception as exc:
+        db_status = "down"
+        issues.append(_issue("critical", "database", f"Database query failed: {exc}"))
+
+    nodes.append(_node(
+        "database",
+        "SQL Database",
+        "persistence",
+        db_status,
+        "Stores flagged memes, batches, pHashes, and AI context.",
+        {"total_memes": total_memes, "total_batches": total_batches, "latest_ingest_at": _iso(latest_ingest)},
+    ))
+
+    storage_status, storage_metrics, storage_issues = _storage_status()
+    issues.extend(storage_issues)
+    nodes.append(_node(
+        "storage",
+        "Upload Storage",
+        "storage",
+        storage_status,
+        "Local source and gateway upload folders.",
+        storage_metrics,
+    ))
+
+    ai_status = "healthy" if os.getenv("ANTHROPIC_API_KEY") else "degraded"
+    if ai_status == "degraded":
+        issues.append(_issue("warning", "ai-analysis", "ANTHROPIC_API_KEY is not configured; AI analysis endpoints will reject uploads."))
+    nodes.append(_node(
+        "ai-analysis",
+        "AI Analysis",
+        "analysis",
+        ai_status,
+        "Claude image and meme context analysis.",
+        {"configured": ai_status == "healthy"},
+    ))
+
+    phash_status = "healthy" if storage_status != "down" else "degraded"
+    nodes.append(_node(
+        "phash",
+        "pHash Engine",
+        "analysis",
+        phash_status,
+        "Computes perceptual hashes for ingest and gateway matching.",
+        {"min_match_similarity": MIN_MATCH_SIMILARITY},
+    ))
+
+    inject_status = _combine_status(db_status, storage_status, ai_status)
+    if inject_status != "healthy":
+        issues.append(_issue("warning", "inject-api", "Ingest depends on database, storage, and AI analysis; at least one dependency is degraded."))
+    nodes.append(_node(
+        "inject-api",
+        "Inject API",
+        "api",
+        inject_status,
+        "Accepts source images through /api/inject and /api/inject/batch.",
+        {"endpoint": "/api/inject"},
+    ))
+
+    gateway_status = _combine_status(db_status, storage_status, ai_status, phash_status)
+    nodes.append(_node(
+        "gateway",
+        "Gateway Check",
+        "consumer",
+        gateway_status,
+        "Checks uploaded images against pHash matches and AI analysis.",
+        {"endpoint": "/api/check"},
+    ))
+
+    dashboard_status = "healthy" if db_status == "healthy" else "down"
+    nodes.append(_node(
+        "dashboard",
+        "Evidence Dashboard",
+        "consumer",
+        dashboard_status,
+        "Reads flagged memes and similarity data for analysts.",
+        {"route": "/dashboard"},
+    ))
+
+    agent_4chan_status, fourchan_agents = _known_agent_status("4chan", now)
+    if not fourchan_agents:
+        issues.append(_issue("warning", "agent-4chan", "No 4chan agent heartbeat has been received. Start agents/agent_4chan.py to activate this source."))
+    elif agent_4chan_status != "healthy":
+        issues.append(_issue("warning", "agent-4chan", "4chan agent heartbeat is stale or reporting a degraded state."))
+
+    agent_metrics = fourchan_agents[0]["metrics"] if fourchan_agents else {}
+    agent_details = fourchan_agents[0]["message"] if fourchan_agents and fourchan_agents[0].get("message") else "Polls 4chan catalog JSON and feeds matching image posts into the inject API."
+    nodes.insert(0, _node(
+        "agent-4chan",
+        "4chan Agent",
+        "source",
+        agent_4chan_status,
+        agent_details,
+        agent_metrics,
+    ))
+
+    edges = [
+        _edge("agent-4chan", "inject-api", "candidate images", _combine_status(agent_4chan_status, inject_status)),
+        _edge("inject-api", "ai-analysis", "context + severity", _combine_status(inject_status, ai_status)),
+        _edge("inject-api", "phash", "image fingerprint", _combine_status(inject_status, phash_status)),
+        _edge("inject-api", "storage", "source image", _combine_status(inject_status, storage_status)),
+        _edge("inject-api", "database", "flagged record", _combine_status(inject_status, db_status)),
+        _edge("database", "dashboard", "evidence records", dashboard_status),
+        _edge("database", "gateway", "known matches", _combine_status(db_status, gateway_status)),
+        _edge("ai-analysis", "gateway", "AI decision", _combine_status(ai_status, gateway_status)),
+        _edge("phash", "gateway", "similarity score", _combine_status(phash_status, gateway_status)),
+    ]
+
+    critical_status = _combine_status(db_status, storage_status, inject_status, ai_status)
+    if db_status == "down":
+        overall_status = "down"
+    elif critical_status != "healthy" or agent_4chan_status != "healthy":
+        overall_status = "degraded"
+    else:
+        overall_status = "healthy"
+
+    agents = [_agent_payload(record, now) for record in AGENT_HEARTBEATS.values()]
+    agents.sort(key=lambda agent: agent["last_seen_at"] or "", reverse=True)
+
+    return {
+        "generated_at": _iso(now),
+        "overall_status": overall_status,
+        "summary": {
+            "total_memes": total_memes,
+            "total_batches": total_batches,
+            "latest_ingest_at": _iso(latest_ingest),
+            "active_agents": sum(1 for agent in agents if agent["status"] == "healthy"),
+            "total_agents": len(agents),
+            "issue_count": len(issues),
+        },
+        "nodes": nodes,
+        "edges": edges,
+        "issues": issues,
+        "agents": agents,
+    }
 
 
 # ---------------------------------------------------------------------------

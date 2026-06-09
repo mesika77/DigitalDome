@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://digitaldome-production.up.railway.app";
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 const api = axios.create({
   baseURL: API_URL,
@@ -11,7 +11,7 @@ export function imageUrl(path) {
   if (!path) return "";
   if (path.startsWith("http")) return path;
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_URL}${cleanPath}`;
+  return API_URL ? `${API_URL}${cleanPath}` : cleanPath;
 }
 
 export function getImagePath(meme) {
@@ -64,5 +64,10 @@ export async function checkImage(file) {
 
 export async function getSimilarMemes(memeId, threshold = 15) {
   const { data } = await api.get(`/api/similar/${memeId}?threshold=${threshold}`);
+  return data;
+}
+
+export async function getDataflowStatus() {
+  const { data } = await api.get("/api/dataflows/status");
   return data;
 }

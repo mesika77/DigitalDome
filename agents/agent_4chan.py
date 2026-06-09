@@ -26,12 +26,13 @@ from typing import Set
 
 import requests
 
-from connector import inject_image, looks_risky, ping_backend
+from connector import inject_image, looks_risky, ping_backend, send_heartbeat
 
 BOARD = os.getenv("CHAN_BOARD", "pol")
 POLL = float(os.getenv("CHAN_POLL", "45"))
 MAX_INJECTS = int(os.getenv("MAX_INJECTS", "30"))
 DELAY = 1.2  # 4chan asks for <= 1 req/sec; we use 1.2 to be safe
+AGENT_ID = f"4chan-{BOARD}"
 
 CATALOG = f"https://a.4cdn.org/{BOARD}/catalog.json"
 THREAD = f"https://a.4cdn.org/{BOARD}/thread/{{no}}.json"
@@ -41,6 +42,34 @@ UA = {"User-Agent": "DigitalDome-Agent/1.0 (research prototype)"}
 _seen: Set[int] = set()
 _mtime: dict[int, int] = {}
 _injected = 0
+
+
+def _heartbeat(
+    *,
+    status: str = "healthy",
+    message: str | None = None,
+    threads_changed: int = 0,
+    threads_total: int = 0,
+    last_error: str | None = None,
+) -> None:
+    send_heartbeat(
+        agent_id=AGENT_ID,
+        agent_type="4chan",
+        source="4chan",
+        community=f"/{BOARD}/",
+        status=status,
+        message=message,
+        last_error=last_error,
+        metrics={
+            "board": BOARD,
+            "threads_changed": threads_changed,
+            "threads_total": threads_total,
+            "injected": _injected,
+            "max_injects": MAX_INJECTS,
+            "poll_seconds": POLL,
+            "seen_posts": len(_seen),
+        },
+    )
 
 
 def _clean(htmltext: str) -> str:
@@ -93,6 +122,7 @@ def process_thread(no: int) -> None:
 def main() -> None:
     print(f"[4chan-agent] board=/{BOARD}/  cap={MAX_INJECTS}  -> DigitalDome")
     ping_backend()
+    _heartbeat(message="agent started")
     global _injected
     while True:
         _injected = 0  # reset cap each cycle
@@ -100,6 +130,7 @@ def main() -> None:
             catalog = _get(CATALOG)
         except requests.RequestException as exc:
             print(f"[4chan-agent] catalog error: {exc}; retrying in {POLL}s")
+            _heartbeat(status="degraded", message="catalog request failed", last_error=str(exc))
             time.sleep(POLL)
             continue
 
@@ -121,6 +152,11 @@ def main() -> None:
 
         if len(_seen) > 20000:
             _seen.clear()
+        _heartbeat(
+            message="scan complete",
+            threads_changed=len(fresh),
+            threads_total=len(threads),
+        )
         time.sleep(POLL)
 
 
@@ -128,4 +164,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
+        _heartbeat(status="down", message="agent stopped by operator")
         print("\n[4chan-agent] stopped")

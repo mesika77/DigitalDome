@@ -31,6 +31,7 @@ import requests
 # Where DigitalDome's backend is running. Override with an env var if needed.
 API = os.getenv("DIGITALDOME_API", "http://localhost:8000")
 INJECT_URL = API + "/api/inject"
+HEARTBEAT_URL = API + "/api/agents/heartbeat"
 
 UA = {"User-Agent": "DigitalDome-Agent/1.0 (research prototype)"}
 
@@ -135,3 +136,40 @@ def ping_backend() -> bool:
     print(f"[connector] WARNING: backend not reachable at {API} "
           f"(start it: cd backend && uvicorn main:app --port 8000)")
     return False
+
+
+def send_heartbeat(
+    *,
+    agent_id: str,
+    agent_type: str,
+    source: str,
+    community: str,
+    status: str = "healthy",
+    message: str | None = None,
+    metrics: dict | None = None,
+    last_error: str | None = None,
+    timeout: float = 5.0,
+) -> bool:
+    """Report agent liveness to the DigitalDome monitor.
+
+    Heartbeats are best-effort: monitor outages should never stop a scraper.
+    """
+    payload = {
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "source": source,
+        "community": community,
+        "status": status,
+        "message": message,
+        "metrics": metrics or {},
+        "last_error": last_error,
+    }
+    try:
+        r = requests.post(HEARTBEAT_URL, json=payload, headers=UA, timeout=timeout)
+        if 200 <= r.status_code < 300:
+            return True
+        print(f"[connector] heartbeat failed: HTTP {r.status_code} {r.text[:120]}")
+        return False
+    except requests.RequestException as exc:
+        print(f"[connector] heartbeat unavailable at {HEARTBEAT_URL}: {exc}")
+        return False

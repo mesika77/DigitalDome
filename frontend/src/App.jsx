@@ -5,6 +5,7 @@ import { AlertTriangle } from "lucide-react";
 import GatewayPage from "./pages/GatewayPage";
 import AdminPage from "./pages/AdminPage";
 import DashboardPage from "./pages/DashboardPage";
+import DataflowsPage from "./pages/DataflowsPage";
 
 class ErrorBoundary extends Component {
   state = { hasError: false };
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/gateway" element={<GatewayPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dataflows" element={<DataflowsPage />} />
         </Routes>
       </ErrorBoundary>
     </BrowserRouter>
