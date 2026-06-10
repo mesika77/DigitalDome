@@ -10,6 +10,7 @@ import {
   Database,
   Gauge,
   HardDrive,
+  LayoutGrid,
   Network,
   Radio,
   RefreshCw,
@@ -18,6 +19,7 @@ import {
   Workflow,
 } from "lucide-react";
 import AppShell from "../components/AppShell";
+import DataflowGraph from "../components/DataflowGraph";
 import { getDataflowStatus } from "../api/client";
 import {
   Badge,
@@ -254,11 +256,51 @@ function AgentCard({ agent }) {
   );
 }
 
+function ViewToggle({ value, onChange }) {
+  const options = [
+    { id: "graph", label: "Graph", icon: Workflow },
+    { id: "cards", label: "Cards", icon: LayoutGrid },
+  ];
+  return (
+    <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+      {options.map((opt) => {
+        const active = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange(opt.id)}
+            aria-pressed={active}
+            className={cx(
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold transition",
+              active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700",
+            )}
+          >
+            {createElement(opt.icon, { className: "h-3.5 w-3.5", "aria-hidden": "true" })}
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const VIEW_KEY = "dataflow-view";
+
 export default function DataflowsPage() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [view, setView] = useState(() => {
+    if (typeof window === "undefined") return "graph";
+    return window.localStorage.getItem(VIEW_KEY) || "graph";
+  });
+
+  const changeView = useCallback((next) => {
+    setView(next);
+    if (typeof window !== "undefined") window.localStorage.setItem(VIEW_KEY, next);
+  }, []);
 
   const fetchStatus = useCallback(async ({ quiet = false } = {}) => {
     if (quiet) setRefreshing(true);
@@ -333,23 +375,30 @@ export default function DataflowsPage() {
                 title="Network"
                 eyebrow="Real-time graph"
                 action={
-                  <Button type="button" size="sm" icon={RefreshCw} onClick={() => fetchStatus({ quiet: true })} disabled={refreshing}>
-                    {refreshing ? "Refreshing" : "Refresh"}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <ViewToggle value={view} onChange={changeView} />
+                    <Button type="button" size="sm" icon={RefreshCw} onClick={() => fetchStatus({ quiet: true })} disabled={refreshing}>
+                      {refreshing ? "Refreshing" : "Refresh"}
+                    </Button>
+                  </div>
                 }
               >
                 Generated {formatTime(status?.generated_at)}
               </PanelHeader>
-              <div className="p-4">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {nodes.map((node) => <NodeCard key={node.id} node={node} />)}
+              {view === "graph" ? (
+                <DataflowGraph nodes={nodes} edges={status?.edges || []} />
+              ) : (
+                <div className="p-4">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {nodes.map((node) => <NodeCard key={node.id} node={node} />)}
+                  </div>
+                  <div className="mt-4 grid gap-2 lg:grid-cols-2">
+                    {(status?.edges || []).map((edge) => (
+                      <EdgeRow key={`${edge.from}-${edge.to}`} edge={edge} nodesById={nodesById} />
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-4 grid gap-2 lg:grid-cols-2">
-                  {(status?.edges || []).map((edge) => (
-                    <EdgeRow key={`${edge.from}-${edge.to}`} edge={edge} nodesById={nodesById} />
-                  ))}
-                </div>
-              </div>
+              )}
             </Panel>
 
             <Panel>
