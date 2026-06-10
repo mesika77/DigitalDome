@@ -57,15 +57,19 @@ const DOT = {
 const BADGE_TONE = { healthy: "emerald", degraded: "amber", down: "red", unknown: "neutral" };
 
 // Left -> right pipeline tiers, positioned by node id.
+// Rows are deliberately offset (not a tidy grid) so that the midpoint
+// labels of "skip" edges (e.g. inject-api -> storage, phash -> gateway,
+// which bypass an intermediate column) land in empty space instead of
+// directly on top of that column's node label.
 const POSITIONS = {
-  "agent-4chan": { x: 0, y: 210 },
-  "inject-api": { x: 320, y: 210 },
-  "ai-analysis": { x: 640, y: 70 },
-  phash: { x: 640, y: 350 },
-  storage: { x: 960, y: 70 },
-  database: { x: 960, y: 350 },
-  dashboard: { x: 1280, y: 70 },
-  gateway: { x: 1280, y: 350 },
+  "agent-4chan": { x: 0, y: 240 },
+  "inject-api": { x: 360, y: 240 },
+  "ai-analysis": { x: 740, y: 20 },
+  phash: { x: 740, y: 420 },
+  storage: { x: 1120, y: 60 },
+  database: { x: 1120, y: 420 },
+  dashboard: { x: 1500, y: 200 },
+  gateway: { x: 1500, y: -50 },
 };
 
 function statusKey(status) {
@@ -83,7 +87,12 @@ function PipelineNode({ data, selected }) {
   const Icon = typeIcons[data.type] || Activity;
   return (
     <div className="flex w-[150px] flex-col items-center">
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-300" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ top: 48 }}
+        className="!h-2 !w-2 !border-0 !bg-slate-300"
+      />
       <div
         className={cx(
           "relative flex h-24 w-24 items-center justify-center rounded-full border-4 bg-white shadow-sm ring-[6px] transition",
@@ -96,7 +105,12 @@ function PipelineNode({ data, selected }) {
       </div>
       <p className="mt-3 max-w-[150px] truncate text-center text-sm font-bold text-slate-900">{data.label}</p>
       <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-slate-400">{data.nodeType}</p>
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-slate-300" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ top: 48 }}
+        className="!h-2 !w-2 !border-0 !bg-slate-300"
+      />
     </div>
   );
 }
@@ -139,15 +153,31 @@ function DetailOverlay({ node, onClose }) {
   );
 }
 
-export default function DataflowGraph({ nodes = [], edges = [], height = 500 }) {
+export default function DataflowGraph({ nodes = [], edges = [], height = 620 }) {
   const [selectedId, setSelectedId] = useState(null);
+  // User-dragged positions, keyed by node id. Falls back to positionFor()
+  // until the user moves a node, and persists across data refreshes.
+  const [positions, setPositions] = useState({});
+
+  const onNodesChange = useCallback((changes) => {
+    setPositions((prev) => {
+      let next = prev;
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          if (next === prev) next = { ...prev };
+          next[change.id] = change.position;
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const rfNodes = useMemo(
     () =>
       nodes.map((node, index) => ({
         id: node.id,
         type: "pipeline",
-        position: positionFor(node.id, index),
+        position: positions[node.id] || positionFor(node.id, index),
         data: {
           label: node.label,
           nodeType: node.type,
@@ -156,7 +186,7 @@ export default function DataflowGraph({ nodes = [], edges = [], height = 500 }) 
         },
         draggable: true,
       })),
-    [nodes],
+    [nodes, positions],
   );
 
   const rfEdges = useMemo(
@@ -171,7 +201,9 @@ export default function DataflowGraph({ nodes = [], edges = [], height = 500 }) 
           animated: edge.status === "healthy",
           style: { stroke: color, strokeWidth: 1.75 },
           labelStyle: { fill: "#64748b", fontSize: 10, fontWeight: 700 },
-          labelBgStyle: { fill: "#ffffff", fillOpacity: 0.85 },
+          labelBgStyle: { fill: "#ffffff", fillOpacity: 0.95 },
+          labelBgPadding: [6, 4],
+          labelBgBorderRadius: 4,
           markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
         };
       }),
@@ -198,6 +230,7 @@ export default function DataflowGraph({ nodes = [], edges = [], height = 500 }) 
         nodes={styledNodes}
         edges={rfEdges}
         nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         fitView
