@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { createElement } from "react";
-import { Database, Gauge, Network, ScanLine, ShieldCheck } from "lucide-react";
+import { Database, Gauge, Network, ScanLine } from "lucide-react";
 import { cx } from "./uiConfig";
 
 const navItems = [
@@ -16,9 +16,11 @@ export default function AppShell({ title, description, metrics = [], children })
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm">
-              <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-            </div>
+            <img
+              src="/brand/digitaldome-logo.jpeg"
+              alt="DigitalDome logo"
+              className="h-12 w-12 shrink-0 rounded-lg border border-slate-200 bg-white object-contain shadow-sm"
+            />
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-700">DigitalDome</p>
               <h1 className="truncate text-base font-black tracking-tight text-slate-950">{title}</h1>
